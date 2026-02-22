@@ -16,14 +16,13 @@ Java_com_moproffi_MoproFfiModule_nativeMultiply(JNIEnv *env, jclass type, jdoubl
 */
 
 // Installer coming from MoproFfiModule
-extern "C"
-JNIEXPORT jboolean JNICALL
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_moproffi_MoproFfiModule_nativeInstallRustCrate(
     JNIEnv *env,
     jclass type,
     jlong rtPtr,
-    jobject callInvokerHolderJavaObj
-) {
+    jobject callInvokerHolderJavaObj)
+{
     // https://github.com/realm/realm-js/blob/main/packages/realm/binding/android/src/main/cpp/io_realm_react_RealmReactModule.cpp#L122-L145
     // React Native uses the fbjni library for handling JNI, which has the concept of "hybrid objects",
     // which are Java objects containing a pointer to a C++ object. The CallInvokerHolder, which has the
@@ -31,33 +30,103 @@ Java_com_moproffi_MoproFfiModule_nativeInstallRustCrate(
     // Rather than reworking our code to use fbjni throughout, this code unpacks the C++ object from the Java
     // object `callInvokerHolderJavaObj` manually, based on reverse engineering the fbjni code.
 
-    // 1. Get the Java object referred to by the mHybridData field of the Java holder object
-    auto callInvokerHolderClass = env->GetObjectClass(callInvokerHolderJavaObj);
-    auto hybridDataField = env->GetFieldID(callInvokerHolderClass, "mHybridData", "Lcom/facebook/jni/HybridData;");
-    auto hybridDataObj = env->GetObjectField(callInvokerHolderJavaObj, hybridDataField);
+    auto clear_pending_exception = [env]()
+    {
+        if (env->ExceptionCheck())
+        {
+            env->ExceptionClear();
+        }
+    };
+
+    // 1. Extract the HybridData instance.
+    // Older RN patterns stored a `HybridData mHybridData` field on the holder.
+    // RN 0.81+ `CallInvokerHolderImpl` extends `HybridClassBase`, which extends `HybridData` directly.
+    jobject hybridDataObj = nullptr;
+    {
+        auto callInvokerHolderClass = env->GetObjectClass(callInvokerHolderJavaObj);
+        if (!callInvokerHolderClass || env->ExceptionCheck())
+        {
+            clear_pending_exception();
+            return JNI_FALSE;
+        }
+
+        auto hybridDataField = env->GetFieldID(
+            callInvokerHolderClass,
+            "mHybridData",
+            "Lcom/facebook/jni/HybridData;");
+
+        if (hybridDataField && !env->ExceptionCheck())
+        {
+            hybridDataObj = env->GetObjectField(callInvokerHolderJavaObj, hybridDataField);
+        }
+        else
+        {
+            // No such field (expected on RN 0.81+). Treat the holder object itself as HybridData.
+            clear_pending_exception();
+            hybridDataObj = callInvokerHolderJavaObj;
+        }
+
+        if (!hybridDataObj || env->ExceptionCheck())
+        {
+            clear_pending_exception();
+            return JNI_FALSE;
+        }
+    }
 
     // 2. Get the destructor Java object referred to by the mDestructor field from the myHybridData Java object
     auto hybridDataClass = env->FindClass("com/facebook/jni/HybridData");
-    auto destructorField =
-        env->GetFieldID(hybridDataClass, "mDestructor", "Lcom/facebook/jni/HybridData$Destructor;");
+    if (!hybridDataClass || env->ExceptionCheck())
+    {
+        clear_pending_exception();
+        return JNI_FALSE;
+    }
+    auto destructorField = env->GetFieldID(
+        hybridDataClass,
+        "mDestructor",
+        "Lcom/facebook/jni/HybridData$Destructor;");
+    if (!destructorField || env->ExceptionCheck())
+    {
+        clear_pending_exception();
+        return JNI_FALSE;
+    }
     auto destructorObj = env->GetObjectField(hybridDataObj, destructorField);
+    if (!destructorObj || env->ExceptionCheck())
+    {
+        clear_pending_exception();
+        return JNI_FALSE;
+    }
 
     // 3. Get the mNativePointer field from the mDestructor Java object
     auto destructorClass = env->FindClass("com/facebook/jni/HybridData$Destructor");
+    if (!destructorClass || env->ExceptionCheck())
+    {
+        clear_pending_exception();
+        return JNI_FALSE;
+    }
     auto nativePointerField = env->GetFieldID(destructorClass, "mNativePointer", "J");
+    if (!nativePointerField || env->ExceptionCheck())
+    {
+        clear_pending_exception();
+        return JNI_FALSE;
+    }
     auto nativePointerValue = env->GetLongField(destructorObj, nativePointerField);
+    if (env->ExceptionCheck())
+    {
+        clear_pending_exception();
+        return JNI_FALSE;
+    }
 
     // 4. Cast the mNativePointer back to its C++ type
-    auto nativePointer = reinterpret_cast<facebook::react::CallInvokerHolder*>(nativePointerValue);
+    auto nativePointer = reinterpret_cast<facebook::react::CallInvokerHolder *>(nativePointerValue);
     auto jsCallInvoker = nativePointer->getCallInvoker();
 
     auto runtime = reinterpret_cast<jsi::Runtime *>(rtPtr);
     return moproffi::installRustCrate(*runtime, jsCallInvoker);
 }
 
-extern "C"
-JNIEXPORT jboolean JNICALL
-Java_com_moproffi_MoproFfiModule_nativeCleanupRustCrate(JNIEnv *env, jclass type, jlong rtPtr) {
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_moproffi_MoproFfiModule_nativeCleanupRustCrate(JNIEnv *env, jclass type, jlong rtPtr)
+{
     auto runtime = reinterpret_cast<jsi::Runtime *>(rtPtr);
     return moproffi::cleanupRustCrate(*runtime);
 }
