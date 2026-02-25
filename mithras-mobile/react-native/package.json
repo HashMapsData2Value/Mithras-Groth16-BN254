@@ -18,10 +18,19 @@
     "gen:logo": "npx react-native set-icon --path ./src/assets/logo.png && node ./scripts/sync-android-round-icons.mjs"
   },
   "dependencies": {
+    "@algorandfoundation/algokit-utils": "^9.2.0",
     "@react-native/new-app-screen": "0.81.4",
+    "@scure/bip39": "^2.0.1",
+    "algosdk": "^3.5.2",
     "react": "19.1.0",
     "react-native": "0.81.4",
+    "react-native-app-intro-slider": "^4.0.4",
+    "react-native-config": "^1.6.1",
     "react-native-fs": "^2.20.0",
+    "react-native-get-random-values": "^2.0.0",
+    "react-native-keychain": "^10.0.0",
+    "react-native-mmkv": "^4.1.2",
+    "react-native-nitro-modules": "^0.33.9",
     "react-native-safe-area-context": "^5.5.2"
   },
   "devDependencies": {
