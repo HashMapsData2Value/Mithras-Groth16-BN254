@@ -19,7 +19,10 @@
   },
   "dependencies": {
     "@algorandfoundation/algokit-utils": "^9.2.0",
+    "@algorandfoundation/xhd-wallet-api": "^1.0.3",
+    "@noble/hashes": "^2.0.1",
     "@react-native/new-app-screen": "0.81.4",
+    "@scure/base": "^2.0.0",
     "@scure/bip39": "^2.0.1",
     "algosdk": "^3.5.2",
     "react": "19.1.0",

@@ -21,8 +21,8 @@ export default function App() {
     (async () => {
       try {
         const present = await hasMnemonic(); //TODO: check network config as well
-        if (!present) setShowIntro(true);
-        //setShowIntro(true); // for testing, always show intro
+        // if (!present) setShowIntro(true); // Commented out while testing
+        setShowIntro(true); // for testing, always show intro
       } catch (e) {
         // if storage unavailable or error, default to showing intro
         setShowIntro(true);

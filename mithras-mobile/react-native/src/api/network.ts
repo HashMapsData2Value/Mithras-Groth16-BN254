@@ -150,8 +150,31 @@ export async function validateNetworkConfig(
   return true;
 }
 
-export default {
-  setDefaultNetwork,
-  setCustomNetwork,
-  validateSetNetwork,
-};
+/**
+ * This must only be called AFTER validateSetNetwork has been called 
+ * at least once to ensure the network config is valid
+ */
+export async function getAlgorandClient(): Promise<AlgorandClient> {
+  const network = storage.getString('network');
+
+  if (network === 'mainnet') {
+    return AlgorandClient.mainNet();
+  }
+  if (network === 'testnet') {
+    return AlgorandClient.testNet();
+  }
+  if (network === 'custom') {
+    const algodUrl = storage.getString('algodUrl')!;
+    const algodToken = storage.getString('algodToken')!;
+    const algodPort = storage.getString('algodPort')!;
+    const indexerUrl = storage.getString('indexerUrl')!;
+    const indexerToken = storage.getString('indexerToken')!;
+    const indexerPort = storage.getString('indexerPort')!;
+
+    const algod = new Algodv2(algodToken, algodUrl, algodPort);
+    const indexer = new Indexer(indexerToken, indexerUrl, indexerPort);
+    return AlgorandClient.fromClients({ algod, indexer });
+  }
+
+  throw new Error('Invalid network configuration');
+}
