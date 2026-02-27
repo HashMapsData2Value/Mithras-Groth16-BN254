@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import ScannerScreen from '../ScannerScreen';
+import ScannerScreen from './ScannerSlide';
 import AppIntroSlider from 'react-native-app-intro-slider';
 import { NetworkConfig } from './NetworkConfigSlide';
 import AppAlert, { ErrorAlert } from '../../components/Alert';
-import { AnimatedArrow, AnimatedEyes, AnimatedPsychedelic } from './OnboardingAnimations';
+import { useConnectivity } from '../../context/Connectivity';
+import { AnimatedArrow, AnimatedEyes } from './OnboardingAnimations';
 import styles from './OnboardingStyles';
 import { MnemonicEntryTopLevel } from './MnemonicSlide';
 
@@ -47,29 +48,29 @@ export const IntroSliderScreen: React.FC<Props> = ({ onDone }) => {
     {
       key: 'scanner',
       title: 'Scanner',
-      text: 'Scan the network for known Algorand addresses.',
+      text: 'Scan your chosen network for funded Algorand addresses.',
     },
   ];
 
   const sliderRef = React.useRef<any>(null);
   const [networkConfirmed, setNetworkConfirmed] = React.useState(false);
   const [mnemonicConfirmed, setMnemonicConfirmed] = React.useState(false);
-  const [currentSlide, setCurrentSlide] = React.useState(0);
+  const [layoutMode, setLayoutMode] = React.useState<'center' | 'top'>('center');
+  const { isConnected } = useConnectivity();
+  // removed unused currentSlide state
   const networkIndex = slides.findIndex((s) => s.key === 'network');
   const mnemonicIndex = slides.findIndex((s) => s.key === 'mnemonic');
 
   const renderItem = ({ item }: { item: typeof slides[number] }) => (
-    <View style={styles.slide}>
+    <View style={item.key === 'network' ? (layoutMode === 'top' ? styles.slideTop : styles.networkSlideCentered) : styles.slide}>
       <View style={styles.titleRow}>
         {item.key === 'explain-3' ? <AnimatedEyes /> : null}
-        <Text style={styles.title}>{item.title}</Text>
+        <Text style={[styles.title, item.key === 'network' ? styles.titleSmall : item.key === 'mnemonic' ? styles.titleSmall : null]}>
+          {item.title}
+        </Text>
       </View>
       {item.key === 'explain-3' ? (
-        <Text style={styles.text}>
-          {'A shielded pool is like a'}
-          <AnimatedPsychedelic />
-          {' within the blockchain.'}
-        </Text>
+        <Text style={styles.text}>{'A shielded pool is like a secret pocket within the blockchain.'}</Text>
       ) : (
         <Text style={styles.text}>{item.text}</Text>
       )}
@@ -84,6 +85,7 @@ export const IntroSliderScreen: React.FC<Props> = ({ onDone }) => {
               sliderRef.current.goToSlide(idx, true);
             }
           }}
+          onLayoutModeChange={setLayoutMode}
         />
       )}
       {item.key === 'mnemonic' && (
@@ -101,14 +103,10 @@ export const IntroSliderScreen: React.FC<Props> = ({ onDone }) => {
           onConfirmed={(v: boolean) => setMnemonicConfirmed(v)}
         />
       )}
-      {item.key === 'scanner' && <ScannerScreen onScan={() => console.log('Scanner start')} />}
+      {item.key === 'scanner' && <ScannerScreen onDone={onDone} />}
     </View>
   );
 
-
-
-
-  // App-wide alert state and helper
   const [appAlert, setAppAlert] = React.useState<{
     title?: string;
     message: string;
@@ -128,14 +126,33 @@ export const IntroSliderScreen: React.FC<Props> = ({ onDone }) => {
     secondaryAction: (() => void) | null = null,
     variant: 'error' | 'ack' = 'ack'
   ) => {
-    console.log('showAppAlert called:', title, message, 'variant=', variant);
     setAppAlert({ title, message, primaryText, primaryAction, secondaryText, secondaryAction, variant });
   };
 
   const hideAppAlert = () => setAppAlert(null);
 
+  // connectivity now provided app-wide via ConnectivityProvider
+
   return (
     <>
+      {/* Connectivity banner */}
+      {!isConnected && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            right: 12,
+            zIndex: 999,
+            alignItems: 'center',
+          }}
+        >
+          <View style={{ backgroundColor: '#FF1744', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8 }}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>No internet connection</Text>
+          </View>
+        </View>
+      )}
+
       <AppIntroSlider
         ref={sliderRef}
         renderItem={renderItem}
@@ -144,7 +161,6 @@ export const IntroSliderScreen: React.FC<Props> = ({ onDone }) => {
         renderNextButton={() => <View />}
         renderDoneButton={() => <View />}
         onSlideChange={(index: number, lastIndex: number) => {
-          setCurrentSlide(index);
           // Prevent advancing past the network slide unless confirmed
           if (lastIndex === networkIndex && index > networkIndex && !networkConfirmed) {
             // snap back to network slide
@@ -192,6 +208,7 @@ export const IntroSliderScreen: React.FC<Props> = ({ onDone }) => {
           />
         )
       ) : null}
+      {/* pass connectivity into Scanner slide via renderItem; nothing else required here */}
     </>
   );
 };

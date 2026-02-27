@@ -7,8 +7,22 @@ export default StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
+  slideTop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    padding: 18,
+    paddingTop: 28,
+  },
+  networkSlideCentered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    paddingTop: 80,
+  },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
     marginBottom: 12,
     color: '#7C4DFF',
@@ -16,6 +30,10 @@ export default StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
     letterSpacing: 0.4,
+  },
+  titleSmall: {
+    fontSize: 20,
+    marginBottom: 8,
   },
   titleRow: {
     alignItems: 'center',

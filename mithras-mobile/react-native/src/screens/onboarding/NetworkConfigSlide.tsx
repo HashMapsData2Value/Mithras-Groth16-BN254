@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, View, Text, KeyboardAvoidingView, Platform, ScrollView, TextInput, ActivityIndicator } from 'react-native';
-import { setDefaultNetwork, DefaultNetwork, setCustomNetwork } from '../../api/network';
+import { setDefaultNetwork, DefaultNetwork, setCustomNetwork } from '../../blockchain/network';
 import styles from './OnboardingStyles';
 
 type NetworkConfigProps = {
@@ -15,9 +15,10 @@ type NetworkConfigProps = {
   ) => void;
   onConfirmed: (v: boolean) => void;
   goToMnemonic?: () => void;
+  onLayoutModeChange?: (mode: 'center' | 'top') => void;
 };
 
-export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onConfirmed, goToMnemonic }) => {
+export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onConfirmed, goToMnemonic, onLayoutModeChange }) => {
   const [isValidating, setIsValidating] = React.useState(false);
   const [selected, setSelected] = React.useState<'mainnet' | 'testnet' | 'custom' | null>(null);
   const [algodUrl, setAlgodUrl] = React.useState('');
@@ -47,6 +48,14 @@ export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onCo
       </TouchableOpacity>
     );
   };
+
+  // Inform parent about layout mode so it can center or push title up
+  React.useEffect(() => {
+    try {
+      if (typeof (arguments[0] as any) === 'undefined') { }
+    } catch (_) { }
+  }, []);
+
 
   const onContinue = async () => {
     try {
@@ -100,10 +109,16 @@ export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onCo
     }
   };
 
+  React.useEffect(() => {
+    if (typeof onLayoutModeChange === 'function') {
+      onLayoutModeChange(selected === 'custom' ? 'top' : 'center');
+    }
+  }, [selected, onLayoutModeChange]);
+
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', marginTop: 12 }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 28 }} keyboardShouldPersistTaps="handled">
-        <View>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', marginTop: 12, flex: 1 }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 180 }} keyboardShouldPersistTaps="handled">
+        <View style={{ flex: 1 }}>
           <Option id="mainnet" label="Mainnet" desc="Live network for real value." />
           <Option id="testnet" label="Testnet" desc="Sandbox network for testing." />
           <Option id="custom" label="Custom" desc="Specify your own node or RPC endpoint." />
@@ -121,8 +136,11 @@ export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onCo
           )}
 
           {selected ? (
-            <View style={{ marginTop: 14, alignItems: 'center' }}>
-              <TouchableOpacity style={[styles.glassButton, { minWidth: 160 }]} onPress={onContinue}>
+            <View style={{ marginTop: 14, alignItems: 'center', marginBottom: 24 }}>
+              <TouchableOpacity
+                style={[styles.glassButton, selected ? styles.saveButton : null, { minWidth: 160 }]}
+                onPress={onContinue}
+              >
                 <Text style={styles.glassButtonText}>Continue</Text>
               </TouchableOpacity>
             </View>

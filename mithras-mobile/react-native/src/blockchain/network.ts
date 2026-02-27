@@ -82,8 +82,6 @@ export async function validateSetNetwork(): Promise<Boolean> {
 
   try {
     const mithras = await algorandClient!.app.getById(BigInt(mithrasAppId!));
-    console.log('mithras:', mithras)
-    console.log('mithras app address:', mithras.appAddress)
     if (!mithras || !mithras.appAddress) {
       console.warn('Invalid Mithras App ID on selected network');
       return false;
@@ -177,4 +175,33 @@ export async function getAlgorandClient(): Promise<AlgorandClient> {
   }
 
   throw new Error('Invalid network configuration');
+}
+
+
+export async function getPublicAddressesAndBalances(): Promise<{ address: string; balance: number }[]> {
+  const algorandClient = await getAlgorandClient();
+  const addresses = storage.getAllKeys().filter(k => k.startsWith('address:')).map(k => storage.getString(k)).filter((a): a is string => !!a);
+
+  if (addresses.length === 0) {
+    console.warn('No public addresses found in storage');
+    return [];
+  }
+
+  const results: { address: string; balance: number }[] = [];
+  for (const address of addresses) {
+    try {
+      const info = await algorandClient.client.algod.accountInformation(address).do();
+      results.push({ address, balance: Number(info.amount) || 0 });
+    } catch (e) {
+      console.warn(`Error fetching balance for address ${address}:`, e);
+      results.push({ address, balance: 0 });
+    }
+  }
+
+  return results;
+}
+
+export function hasNetwork(): boolean {
+  const network = storage.getString('network');
+  return network === 'mainnet' || network === 'testnet' || network === 'custom';
 }

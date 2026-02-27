@@ -19,8 +19,8 @@ type MnemonicEntryProps = {
   ) => void;
 };
 
-export const MnemonicEntryTopLevel: React.FC<MnemonicEntryProps> = ({ onSaved, onDone, onConfirmed, showAppAlert }) => {
-  const [text, setText] = React.useState('');
+export const MnemonicEntryTopLevel: React.FC<MnemonicEntryProps> = ({ onSaved, onConfirmed, showAppAlert }) => {
+  const [text, setText] = React.useState('nice nest office figure ritual rack live tortoise marine agent want surface input tattoo risk net rebel canvas industry maze come acoustic castle casino');
   const [isValid, setIsValid] = React.useState<boolean | null>(null);
   const [showSaved, setShowSaved] = React.useState(false);
 

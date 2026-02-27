@@ -9,6 +9,6 @@ export function validateMnemonicService(mnemonic: string): boolean {
   return validateMnemonic(mnemonic, englishWordlistExport);
 }
 
-export function mnemonicToSeed(mnemonic: string, password?: string): Buffer {
-  return Buffer.from(mnemonicToSeedSync(mnemonic, password));
+export function mnemonicToSeed(mnemonic: string, password?: string): Uint8Array {
+  return mnemonicToSeedSync(mnemonic, password);
 }
