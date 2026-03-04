@@ -13,6 +13,10 @@
     "build:test": "pnpm build:test-contracts && pnpm build:test-clients",
     "build:zkey": "cd circuits && bash zkey.sh"
   },
+  "files": [
+    "src",
+    "contracts"
+  ],
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -28,7 +32,9 @@
     "snarkjs": "^0.7.5",
     "vitest": "^3.2.4"
   },
-  "dependencies": {
-    "snarkjs-algorand": "^0.11.0"
+  "peerDependencies": {
+    "mithras-crypto": "1.0.0",
+    "mithras-subscriber": "1.0.0",
+    "snarkjs-algorand": "file:snarkjs-algorand-0.12.0.tgz"
   }
 }

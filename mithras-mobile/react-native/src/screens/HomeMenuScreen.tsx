@@ -14,8 +14,13 @@ import {
 } from 'react-native';
 
 import { styles } from './menu/MenuStyles';
+import { Alert } from 'react-native';
+import { deployMithrasAppLocalnet } from '../blockchain/deploy';
 
 import PublicScreen from './menu/PublicScreen';
+import ShieldedScreen from './menu/ShieldedScreen';
+import { AddBall } from './menu/AddBall';
+import { getNextAddressIndex } from '../services/hdWallet';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -40,10 +45,12 @@ function ActionButton({ label, onPress }: { label: string; onPress?: () => void 
 export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
   const scrollRef = React.useRef<ScrollView | null>(null);
   const [index, setIndex] = React.useState(0);
+  const [confirm, setConfirm] = React.useState<{ visible: boolean; index: number | null; target?: 'public' | 'shielded' }>({ visible: false, index: null, target: undefined });
   const scrollX = React.useRef(new Animated.Value(0)).current;
   const cloud1X = React.useRef(new Animated.Value(0)).current;
   const cloud2X = React.useRef(new Animated.Value(0)).current;
   const cloud3X = React.useRef(new Animated.Value(0)).current;
+  // FAB animations will derive from `scrollX` so they move consistently with swipes
 
   const goTo = (i: number) => {
     if (scrollRef.current) {
@@ -90,7 +97,6 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
 
     };
   }, [cloud1X, cloud2X, cloud3X]);
-
 
 
   return (
@@ -229,16 +235,56 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
           <Text style={styles.pageTitle}>Public Addresses</Text>
           <Text style={styles.pageSubtitle}>Addresses visible on-chain (public)</Text>
-          <PublicScreen />
+          <PublicScreen confirm={confirm} setConfirm={setConfirm} />
+          <Animated.View
+            pointerEvents={index === 0 ? 'auto' : 'none'}
+            style={{
+              position: 'absolute',
+              right: 16,
+              bottom: 24,
+              transform: [
+                {
+                  translateX: scrollX.interpolate({ inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH], outputRange: [40, 0, -40], extrapolate: 'clamp' }),
+                },
+                { scale: scrollX.interpolate({ inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH], outputRange: [0.96, 1, 0.96], extrapolate: 'clamp' }) },
+              ],
+              opacity: scrollX.interpolate({ inputRange: [-SCREEN_WIDTH * 0.5, 0, SCREEN_WIDTH * 0.5], outputRange: [0, 1, 0], extrapolate: 'clamp' }),
+            }}
+          >
+            <AddBall inverted style={styles.fabOverlay} onPress={async () => {
+              try {
+                const next = getNextAddressIndex();
+                setConfirm({ visible: true, index: next, target: 'public' });
+              } catch (e) {
+                console.warn(e);
+              }
+            }} />
+          </Animated.View>
         </View>
 
         {/* Shielded Addresses */}
         <View style={[styles.page, { width: SCREEN_WIDTH }]}>
           <Text style={styles.pageTitle}>Shielded Addresses</Text>
           <Text style={styles.pageSubtitle}>Your private/stealth addresses</Text>
-          <View style={styles.placeholderCard}>
-            <Text style={styles.placeholderText}>No shielded addresses yet.</Text>
-          </View>
+          <ShieldedScreen confirm={confirm} setConfirm={setConfirm} />
+          {/* Shielded FAB (animated) inside page so it moves with swipe */}
+          <Animated.View
+            pointerEvents={index === 1 ? 'auto' : 'none'}
+            style={{
+              position: 'absolute',
+              right: 16,
+              bottom: 24,
+              transform: [
+                {
+                  translateX: scrollX.interpolate({ inputRange: [0, SCREEN_WIDTH, SCREEN_WIDTH * 2], outputRange: [40, 0, -40], extrapolate: 'clamp' }),
+                },
+                { scale: scrollX.interpolate({ inputRange: [0, SCREEN_WIDTH, SCREEN_WIDTH * 2], outputRange: [0.96, 1, 0.96], extrapolate: 'clamp' }) },
+              ],
+              opacity: scrollX.interpolate({ inputRange: [SCREEN_WIDTH - SCREEN_WIDTH * 0.5, SCREEN_WIDTH, SCREEN_WIDTH + SCREEN_WIDTH * 0.5], outputRange: [0, 1, 0], extrapolate: 'clamp' }),
+            }}
+          >
+            <AddBall style={styles.fabOverlay} onPress={() => { setConfirm({ visible: true, index: null, target: 'shielded' }); }} />
+          </Animated.View>
         </View>
 
         {/* Settings (actions) */}
@@ -249,10 +295,23 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
             <ActionButton label="Make My Algos Private (Deposit)" onPress={onDeposit} />
             <ActionButton label="Transfer Private Algos (Spend)" onPress={onSpend} />
             <ActionButton label="Multiplier (debug)" onPress={onMultiplier} />
+            <ActionButton
+              label="Deploy Mithras (localnet)"
+              onPress={async () => {
+                try {
+                  const appId = await deployMithrasAppLocalnet();
+                  Alert.alert('Deployed', `Mithras App ID: ${appId.toString()}`);
+                } catch (e) {
+                  Alert.alert('Deploy failed', String(e));
+                }
+              }}
+            />
             <ActionButton label="Make My Algos Public (Withdraw)" onPress={() => { }} />
           </View>
         </View>
       </Animated.ScrollView>
+
+
 
       <View style={styles.navbar}>
         <Pressable style={styles.navItem} onPress={() => goTo(0)}>

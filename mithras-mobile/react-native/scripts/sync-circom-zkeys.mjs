@@ -21,8 +21,10 @@ const circuitsDir = path.join(
 const assetsDir = path.join(projectRoot, 'assets', 'keys');
 
 const filesToSync = [
-  'deposit.zkey',
-  'spend.zkey',
+  'deposit_test.zkey',
+  'spend_test.zkey',
+  'deposit.wasm',
+  'spend.wasm',
 ];
 
 if (!fs.existsSync(circuitsDir)) {
@@ -38,6 +40,9 @@ let skipped = 0;
 for (const fileName of filesToSync) {
   const src = path.join(circuitsDir, fileName);
   const dest = path.join(assetsDir, fileName);
+  // ensure destination directory exists for nested paths
+  const destDir = path.dirname(dest);
+  fs.mkdirSync(destDir, { recursive: true });
 
   if (!fs.existsSync(src)) {
     console.error(`Missing required circuit artifact: ${src}`);

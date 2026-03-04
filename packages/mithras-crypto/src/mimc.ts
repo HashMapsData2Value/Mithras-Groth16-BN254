@@ -1,5 +1,5 @@
 import { bytesToNumberBE } from "@noble/curves/utils.js";
-import { TREE_DEPTH } from "../../mithras-contracts-and-circuits/src/constants";
+import { TREE_DEPTH } from "./extracted.js";
 
 const MODULUS = BigInt(
   "21888242871839275222246405745257275088548364400416034343698204186575808495617",

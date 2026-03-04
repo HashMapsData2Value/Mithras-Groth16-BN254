@@ -1,3 +1,5 @@
+// Used to store sensitive data like mnemonic.
+
 import * as Keychain from 'react-native-keychain';
 
 const SERVICE = 'mithras_mnemonic';

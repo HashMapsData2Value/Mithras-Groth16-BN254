@@ -100,9 +100,7 @@ export const styles = StyleSheet.create({
     position: 'absolute',
     left: '50%',
     top: '50%',
-    marginLeft: -36,
-    marginTop: -36,
-    width: 72,
+    width: 40,
     height: 72,
     borderRadius: 36,
     backgroundColor: '#000',
@@ -217,6 +215,19 @@ export const styles = StyleSheet.create({
     color: '#C9B8FF',
     marginBottom: 12,
   },
+  fabOverlay: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    zIndex: 20,
+  },
   placeholderCard: {
     marginTop: 18,
     width: '100%',
@@ -274,6 +285,28 @@ export const styles = StyleSheet.create({
     fontWeight: '700'
   },
   navLabelActive: {
-    color: '#00C853'
-  }
+    color: '#4abfd7',
+    fontWeight: '800',
+  },
+  ball: {
+    backgroundColor: "#000", // black background
+    borderRadius: 22,
+    width: 44,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  plusContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  plus: {
+    color: "#fff", // white plus
+    fontSize: 24,
+    fontWeight: "700",
+  },
 });

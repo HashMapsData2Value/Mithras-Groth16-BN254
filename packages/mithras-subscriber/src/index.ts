@@ -12,10 +12,10 @@ import {
   UtxoSecrets,
   deriveStealthPubkey,
   bytesToNumberBE,
-} from "../../mithras-crypto/src";
+} from "mithras-crypto";
 import base32 from "hi-base32";
 
-import appspec from "../../mithras-contracts-and-circuits/contracts/out/Mithras.arc56.json";
+import appspec from "./Mithras.arc56.json" with { type: "json" };
 
 const DEPOSIT_SIGNATURE =
   "deposit(uint256[],(byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],uint256,uint256,uint256,uint256,uint256,uint256),byte[250],pay,txn)void";
@@ -43,7 +43,7 @@ export class MithrasMethod {
     public hpke_envelopes: HpkeEnvelope[],
     public commitments: bigint[],
     public nullifier?: bigint,
-  ) {}
+  ) { }
 
   static fromArgs(args: readonly Uint8Array[]): MithrasMethod | null {
     if (args.length === 0) {

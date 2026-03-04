@@ -1,17 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, Alert, Modal, TextInput, Button } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { truncAddress } from '../services/hdwallet';
+import { truncAddress } from '../services/hdWallet';
+import { getBalanceForAddress } from '../blockchain/network';
+import { getShieldedAddressEntries } from '../services/shWallet';
+import { depositToShieldedPool } from '../blockchain/transactions';
 
 type Props = {
   address: string;
+  publicIndex?: number;
   balance?: number | string;
 };
 
-export default function AddressCard({ address, balance }: Props) {
+export default function AddressCard({ address, publicIndex, balance }: Props) {
   const [copied, setCopied] = React.useState(false);
   const [depositOpen, setDepositOpen] = React.useState(false);
   const [depositAmount, setDepositAmount] = React.useState('');
+  const [bal, setBal] = React.useState<number | string | undefined>(balance);
+  const [busy, setBusy] = React.useState(false);
 
   const onCopy = () => {
     try {
@@ -25,6 +31,7 @@ export default function AddressCard({ address, balance }: Props) {
   };
 
   const onPress = () => {
+    if (typeof publicIndex !== 'number') return;
     // quick tap opens deposit modal
     setDepositAmount('');
     setDepositOpen(true);
@@ -32,10 +39,30 @@ export default function AddressCard({ address, balance }: Props) {
 
   const formatBalance = (b?: number | string) => {
     if (b === undefined || b === null) return '-';
-    const n = typeof b === 'string' ? Number(b) : b;
-    if (!isFinite(n)) return '-';
-    const algo = n / 1_000_000;
-    return algo.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    if (typeof b === 'number') {
+      if (!isFinite(b)) return '-';
+      const algo = b / 1_000_000;
+      return algo.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    }
+
+    // bigint-safe formatting for microAlgos encoded as a decimal string
+    const s = b.trim();
+    if (!/^\d+$/.test(s)) {
+      const n = Number(s);
+      if (!isFinite(n)) return '-';
+      const algo = n / 1_000_000;
+      return algo.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    }
+
+    try {
+      const micro = BigInt(s);
+      const whole = micro / 1_000_000n;
+      const frac = micro % 1_000_000n;
+      const fracStr = frac.toString().padStart(6, '0').replace(/0+$/, '');
+      return fracStr.length ? `${whole.toString()}.${fracStr}` : whole.toString();
+    } catch {
+      return '-';
+    }
   };
 
   const onConfirmDeposit = () => {
@@ -51,6 +78,42 @@ export default function AddressCard({ address, balance }: Props) {
     setDepositOpen(false);
   };
 
+  // Poll balance for public Algorand addresses periodically to avoid reloading the whole list.
+  // Shielded addresses are bech32 "mith..." and do not have an on-chain account balance.
+  React.useEffect(() => {
+    let mounted = true;
+    const loadingRef = { current: false } as { current: boolean };
+
+    if (address.startsWith('mith')) {
+      setBal(balance);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    async function loadBalance() {
+      if (!mounted) return;
+      if (loadingRef.current) return;
+      loadingRef.current = true;
+      try {
+        const n = await getBalanceForAddress(address);
+        if (mounted) setBal(n);
+      } catch (e) {
+        console.warn('AddressCard balance load error', e);
+      } finally {
+        loadingRef.current = false;
+      }
+    }
+
+    // initial fetch and interval
+    loadBalance();
+    const id = setInterval(loadBalance, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [address, balance]);
+
   return (
     <>
       <Pressable style={styles.card} onLongPress={onCopy} onPress={onPress} accessibilityLabel="Address card">
@@ -61,25 +124,56 @@ export default function AddressCard({ address, balance }: Props) {
           {copied ? <Text style={styles.copiedText}>Copied</Text> : null}
         </View>
         <View style={styles.right}>
-          <Text style={styles.balance}>{formatBalance(balance)} ALGO</Text>
+          <Text style={styles.balance}>{formatBalance(bal)} ALGO</Text>
         </View>
       </Pressable>
 
       <AddressCardModal
         visible={depositOpen}
-        onClose={() => setDepositOpen(false)}
-        onConfirm={({ action, amountALGO, to }) => {
+        onClose={() => {
+          if (busy) return;
+          setDepositOpen(false);
+        }}
+        publicIndex={publicIndex}
+        onConfirm={({ action, amountALGO, to, toShieldedIndex }) => {
           const micro = Math.round(amountALGO * 1_000_000);
           if (action === 'deposit') {
-            console.log(`Deposit request: address=${address} amountALGO=${amountALGO} micro=${micro}`);
-            Alert.alert('Deposit', `Depositing ${amountALGO} ALGO (${micro} µA) to shielded pool.`);
+            if (typeof publicIndex !== 'number') {
+              Alert.alert('Missing signer', 'This address is missing a derivation index.');
+              return;
+            }
+
+            setDepositOpen(false);
+            setBusy(true);
+
+            (async () => {
+              try {
+                console.log(
+                  `Deposit request: fromIndex=${publicIndex} amountALGO=${amountALGO} micro=${micro} toShieldedIndex=${toShieldedIndex}`,
+                );
+
+                const res = await depositToShieldedPool({
+                  fromIndex: publicIndex,
+                  toShieldedIndex,
+                  amountMicroAlgos: BigInt(micro),
+                });
+
+                const txIds = Array.isArray(res?.txIds) ? res.txIds.join(', ') : '(unknown)';
+                Alert.alert('Deposit submitted', `TxIDs: ${txIds}`);
+              } catch (e) {
+                console.warn('Deposit failed', e);
+                Alert.alert('Deposit failed', String(e));
+              } finally {
+                setBusy(false);
+              }
+            })();
           } else {
             console.log(`Transfer request: from=${address} to=${to} amountALGO=${amountALGO} micro=${micro}`);
             Alert.alert('Transfer', `Transferring ${amountALGO} ALGO (${micro} µA) to ${to}`);
           }
-          setDepositOpen(false);
+          if (action !== 'deposit') setDepositOpen(false);
         }}
-        balance={balance}
+        balance={bal}
         amount={depositAmount}
         setAmount={setDepositAmount}
       />
@@ -91,6 +185,7 @@ export default function AddressCard({ address, balance }: Props) {
 export function AddressCardModal({
   visible,
   onClose,
+  publicIndex,
   onConfirm,
   balance,
   amount,
@@ -98,13 +193,51 @@ export function AddressCardModal({
 }: {
   visible: boolean;
   onClose: () => void;
-  onConfirm: (payload: { action: 'deposit' | 'transfer'; amountALGO: number; to?: string }) => void;
+  publicIndex?: number;
+  onConfirm: (payload: { action: 'deposit' | 'transfer'; amountALGO: number; to?: string; toShieldedIndex?: number }) => void;
   balance?: number | string;
   amount: string;
   setAmount: (s: string) => void;
 }) {
   const [action, setAction] = React.useState<'deposit' | 'transfer' | null>(null);
   const [toAddress, setToAddress] = React.useState('');
+  const [shieldedEntries, setShieldedEntries] = React.useState<Array<{ index: number; address: string }>>([]);
+  const [shieldedLoading, setShieldedLoading] = React.useState(false);
+  const [shieldedOpen, setShieldedOpen] = React.useState(false);
+  const [selectedShieldedIndex, setSelectedShieldedIndex] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function loadShielded() {
+      if (!visible) return;
+      if (action !== 'deposit') return;
+      setShieldedLoading(true);
+      try {
+        const entries = await getShieldedAddressEntries();
+        if (!mounted) return;
+        setShieldedEntries(entries);
+        if (entries.length > 0) {
+          setSelectedShieldedIndex((prev) => (prev === null ? entries[0].index : prev));
+        } else {
+          setSelectedShieldedIndex(null);
+        }
+      } catch (e) {
+        console.warn('Failed to load shielded addresses', e);
+        if (mounted) {
+          setShieldedEntries([]);
+          setSelectedShieldedIndex(null);
+        }
+      } finally {
+        if (mounted) setShieldedLoading(false);
+      }
+    }
+
+    loadShielded();
+    return () => {
+      mounted = false;
+    };
+  }, [visible, action]);
 
   const formatBalance = (b?: number | string) => {
     if (b === undefined || b === null) return '-';
@@ -116,7 +249,7 @@ export function AddressCardModal({
 
   const computeMaxString = () => {
     const raw = typeof balance === 'string' ? Number(balance) : balance;
-    if (!isFinite(raw)) return '';
+    if (typeof raw !== 'number' || !isFinite(raw)) return '';
     const algo = raw / 1_000_000;
     const max = Math.max(0, algo - 0.2);
     return Number(max.toFixed(6)).toString();
@@ -136,8 +269,30 @@ export function AddressCardModal({
       Alert.alert('Missing address', 'Please enter a recipient Algorand address');
       return;
     }
-    onConfirm({ action: action ?? 'deposit', amountALGO: n, to: action === 'transfer' ? toAddress : undefined });
+
+    if ((action ?? 'deposit') === 'deposit') {
+      if (shieldedLoading) {
+        Alert.alert('Please wait', 'Loading shielded addresses...');
+        return;
+      }
+      if (shieldedEntries.length === 0 || selectedShieldedIndex === null) {
+        Alert.alert(
+          'No shielded addresses',
+          'Create a shielded address first (Shielded Addresses tab), then try depositing again.',
+        );
+        return;
+      }
+    }
+
+    onConfirm({
+      action: action ?? 'deposit',
+      amountALGO: n,
+      to: action === 'transfer' ? toAddress : undefined,
+      toShieldedIndex: (action ?? 'deposit') === 'deposit' ? (selectedShieldedIndex ?? undefined) : undefined,
+    });
   };
+
+  const selectedShielded = shieldedEntries.find((e) => e.index === selectedShieldedIndex);
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -175,6 +330,44 @@ export function AddressCardModal({
                 value={amount}
                 onChangeText={setAmount}
               />
+              {action === 'deposit' ? (
+                <>
+                  <Text style={styles.modalSubtitle}>Destination shielded address</Text>
+                  <Pressable
+                    style={styles.dropdownRow}
+                    onPress={() => setShieldedOpen((v) => !v)}
+                    disabled={shieldedLoading || shieldedEntries.length === 0}
+                  >
+                    <Text style={styles.dropdownText} numberOfLines={1}>
+                      {shieldedLoading
+                        ? 'Loading...'
+                        : selectedShielded
+                          ? `m/44'/283'/{1,2}/0/${selectedShielded.index}  •  ${truncAddress(selectedShielded.address)}`
+                          : shieldedEntries.length === 0
+                            ? 'No shielded addresses'
+                            : 'Select a shielded address'}
+                    </Text>
+                  </Pressable>
+                  {shieldedOpen && shieldedEntries.length > 0 ? (
+                    <View style={styles.dropdownList}>
+                      {shieldedEntries.map((e) => (
+                        <Pressable
+                          key={e.index}
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setSelectedShieldedIndex(e.index);
+                            setShieldedOpen(false);
+                          }}
+                        >
+                          <Text style={styles.dropdownItemText} numberOfLines={1}>
+                            {`m/44'/283'/{1,2}/0/${e.index}  •  ${truncAddress(e.address)}`}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
               {action === 'transfer' ? (
                 <TextInput
                   style={styles.modalInput}
@@ -288,6 +481,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
     marginBottom: 12,
+  },
+  dropdownRow: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 12,
+  },
+  dropdownText: {
+    color: '#EDE7FF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dropdownList: {
+    marginTop: -6,
+    marginBottom: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  dropdownItemText: {
+    color: '#C9B8FF',
+    fontSize: 13,
+    fontWeight: '600',
   },
   modalButtons: {
     flexDirection: 'row',

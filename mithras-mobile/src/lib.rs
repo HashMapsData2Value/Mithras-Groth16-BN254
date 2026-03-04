@@ -33,8 +33,8 @@ pub mod witness {
 crate::set_circom_circuits! {
     ("multiplier2_final.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::multiplier2_witness)),
     ("multiplier2_bls_final.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::multiplier2bls_witness)),
-    ("deposit.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::deposit_witness)),
-    ("spend.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::spend_witness)),
+    ("deposit_test.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::deposit_witness)),
+    ("spend_test.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::spend_witness)),
 }
 
 mod circom;
@@ -49,9 +49,9 @@ const MULTIPLIER2_ZKEY_PATH: &str = "./test-vectors/circom/multiplier2_final.zke
 #[cfg(test)]
 const MULTIPLIER2_BLS_ZKEY_PATH: &str = "./test-vectors/circom/multiplier2_bls_final.zkey";
 #[cfg(test)]
-const DEPOSIT_ZKEY_PATH: &str = "./test-vectors/circom/deposit.zkey";
+const DEPOSIT_ZKEY_PATH: &str = "./test-vectors/circom/deposit_test.zkey";
 #[cfg(test)]
-const SPEND_ZKEY_PATH: &str = "./test-vectors/circom/spend.zkey";
+const SPEND_ZKEY_PATH: &str = "./test-vectors/circom/spend_test.zkey";
 
 #[test]
 fn test_multiplier2() {
@@ -179,12 +179,12 @@ fn test_deposit_direct_circom_prover_roundtrip() {
     })
     .to_string();
 
-    let witness_fn = crate::circom_get("deposit.zkey").unwrap_or_else(|| {
+    let witness_fn = crate::circom_get("deposit_test.zkey").unwrap_or_else(|| {
         eprintln!(
-            "missing witness fn for deposit.zkey. available: {:?}",
+            "missing witness fn for deposit_test.zkey. available: {:?}",
             crate::circom_list()
         );
-        panic!("missing witness fn for deposit.zkey");
+        panic!("missing witness fn for deposit_test.zkey");
     });
     let proof = CircomProver::prove(
         CircomProverProofLib::Arkworks,
@@ -339,12 +339,12 @@ fn test_spend_direct_circom_prover_roundtrip() {
     })
     .to_string();
 
-    let witness_fn = crate::circom_get("spend.zkey").unwrap_or_else(|| {
+    let witness_fn = crate::circom_get("spend_test.zkey").unwrap_or_else(|| {
         eprintln!(
-            "missing witness fn for spend.zkey. available: {:?}",
+            "missing witness fn for spend_test.zkey. available: {:?}",
             crate::circom_list()
         );
-        panic!("missing witness fn for spend.zkey");
+        panic!("missing witness fn for spend_test.zkey");
     });
     let proof = CircomProver::prove(
         CircomProverProofLib::Arkworks,

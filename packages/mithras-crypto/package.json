@@ -1,22 +1,33 @@
 {
   "name": "mithras-crypto",
+  "version": "1.0.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "latest",
     "prettier": "^3.6.2",
     "vitest": "^3.2.4"
   },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
   "dependencies": {
-    "@hpke/chacha20poly1305": "^1.7.1",
-    "@hpke/core": "^1.7.5",
+    "@algorandfoundation/algorand-typescript": "^1.1.0",
+    "@noble/ciphers": "^2.1.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "bech32": "^2.0.0"

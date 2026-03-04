@@ -9,6 +9,7 @@ type Props = {
   primaryAction?: () => void;
   secondaryText?: string;
   secondaryAction?: () => void;
+  showReturn?: boolean;
   onRequestClose?: () => void;
 };
 
@@ -146,10 +147,12 @@ export const AckAlert: React.FC<Props> = ({
   message,
   primaryText = 'Done',
   primaryAction,
-  secondaryText = 'Return',
+  secondaryText,
   secondaryAction,
+  showReturn,
   onRequestClose,
 }) => {
+  const resolvedSecondaryText = secondaryText ?? (showReturn ? 'Return' : undefined);
   return (
     <AlertModal
       visible={visible}
@@ -157,7 +160,7 @@ export const AckAlert: React.FC<Props> = ({
       message={message}
       primaryText={primaryText}
       primaryAction={primaryAction}
-      secondaryText={secondaryText}
+      secondaryText={resolvedSecondaryText}
       secondaryAction={secondaryAction}
       onRequestClose={onRequestClose}
     />

@@ -1,6 +1,6 @@
 import React from 'react';
 import styles from './OnboardingStyles';
-import { setMnemonic } from '../../services/secureStorage';
+import { setMnemonic, getMnemonic, hasMnemonic } from '../../services/secureStorage';
 import { Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { generateMnemonicService, validateMnemonicService } from '../../services/mnemonics';
 
@@ -20,7 +20,7 @@ type MnemonicEntryProps = {
 };
 
 export const MnemonicEntryTopLevel: React.FC<MnemonicEntryProps> = ({ onSaved, onConfirmed, showAppAlert }) => {
-  const [text, setText] = React.useState('nice nest office figure ritual rack live tortoise marine agent want surface input tattoo risk net rebel canvas industry maze come acoustic castle casino');
+  const [text, setText] = React.useState('');
   const [isValid, setIsValid] = React.useState<boolean | null>(null);
   const [showSaved, setShowSaved] = React.useState(false);
 
@@ -28,6 +28,33 @@ export const MnemonicEntryTopLevel: React.FC<MnemonicEntryProps> = ({ onSaved, o
     const ok = validateMnemonicService(text);
     setIsValid(ok);
   }, [text, validateMnemonicService]);
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const present = await hasMnemonic();
+        if (!mounted) return;
+        if (present) {
+          const m = await getMnemonic();
+          if (m && mounted) {
+            setText(m);
+            const ok = validateMnemonicService(m);
+            setIsValid(ok);
+          }
+        } else {
+          // While developing, it's a pain to generate and type in a mnemonic every time, 
+          // so prefill with a known test vector if none is stored. Remove in production!
+          setText('nice nest office figure ritual rack live tortoise marine agent want surface input tattoo risk net rebel canvas industry maze come acoustic castle casino');
+        }
+      } catch (e) {
+        console.warn('Error reading stored mnemonic', e);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const onChange = (val: string) => {
     setText(val);

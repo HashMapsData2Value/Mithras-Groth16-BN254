@@ -20,7 +20,7 @@ type NetworkConfigProps = {
 
 export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onConfirmed, goToMnemonic, onLayoutModeChange }) => {
   const [isValidating, setIsValidating] = React.useState(false);
-  const [selected, setSelected] = React.useState<'mainnet' | 'testnet' | 'custom' | null>(null);
+  const [selected, setSelected] = React.useState<'mainnet' | 'testnet' | 'localnet' | 'custom' | null>(null);
   const [algodUrl, setAlgodUrl] = React.useState('');
   const [algodToken, setAlgodToken] = React.useState('');
   const [algodPort, setAlgodPort] = React.useState('');
@@ -29,7 +29,7 @@ export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onCo
   const [indexerPort, setIndexerPort] = React.useState('');
   const [mithrasAppId, setMithrasAppId] = React.useState('');
 
-  const Option: React.FC<{ id: 'mainnet' | 'testnet' | 'custom'; label: string; desc?: string }> = ({ id, label, desc }) => {
+  const Option: React.FC<{ id: 'mainnet' | 'testnet' | 'localnet' | 'custom'; label: string; desc?: string }> = ({ id, label, desc }) => {
     const isSel = selected === id;
     return (
       <TouchableOpacity
@@ -88,6 +88,8 @@ export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onCo
         await setDefaultNetwork(DefaultNetwork.Mainnet);
       } else if (selected === 'testnet') {
         await setDefaultNetwork(DefaultNetwork.Testnet);
+      } else if (selected === 'localnet') {
+        await setDefaultNetwork(DefaultNetwork.Localnet);
       } else {
         await setCustomNetwork({
           algodUrl: cfg?.algodUrl || '',
@@ -121,6 +123,7 @@ export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onCo
         <View style={{ flex: 1 }}>
           <Option id="mainnet" label="Mainnet" desc="Live network for real value." />
           <Option id="testnet" label="Testnet" desc="Sandbox network for testing." />
+          <Option id="localnet" label="Localnet" desc="Localhost network. (For local development)." />
           <Option id="custom" label="Custom" desc="Specify your own node or RPC endpoint." />
 
           {selected === 'custom' && (

@@ -8,8 +8,8 @@ import {
   numberToBytesLE,
 } from "@noble/curves/utils.js";
 import { sha512 } from "@noble/hashes/sha2.js";
-import { MithrasAddr } from "./address";
-import { SupportedHpkeSuite } from "./hpke";
+import { MithrasAddr } from "./address.js";
+import { SupportedHpkeSuite } from "./hpke.js";
 
 export class ViewKeypair {
   privateKey: Uint8Array;
@@ -38,6 +38,7 @@ export class SpendKeypair {
   seed: Uint8Array;
   publicKey: Uint8Array;
 
+  // TODO: Don't input publicKey, just derive it from the seed
   private constructor(seed: Uint8Array, publicKey: Uint8Array) {
     this.seed = seed;
     this.publicKey = publicKey;

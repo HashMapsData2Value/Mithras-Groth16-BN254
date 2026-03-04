@@ -1,12 +1,13 @@
 import Config from 'react-native-config';
 import { storage } from '../services/storage';
-
 import { AlgorandClient } from '@algorandfoundation/algokit-utils';
-import { Algodv2, Indexer } from 'algosdk';
+import { MithrasClient } from 'mithras-contracts-and-circuits/contracts/clients/Mithras';
+import algosdk from 'algosdk';
 
 export const enum DefaultNetwork {
   Mainnet,
   Testnet,
+  Localnet
 }
 
 export function setDefaultNetwork(network: DefaultNetwork) {
@@ -19,6 +20,11 @@ export function setDefaultNetwork(network: DefaultNetwork) {
     case DefaultNetwork.Testnet:
       storage.set('network', 'testnet');
       storage.set('mithrasAppId', Config.TESTNET_MITHRAS_APP_ID || '');
+      break;
+
+    case DefaultNetwork.Localnet:
+      storage.set('network', 'localnet');
+      storage.set('mithrasAppId', Config.LOCALNET_MITHRAS_APP_ID || '');
       break;
 
     default:
@@ -62,6 +68,7 @@ export async function validateSetNetwork(): Promise<Boolean> {
 
   if (network == 'mainnet') { algorandClient = AlgorandClient.mainNet(); }
   if (network == 'testnet') { algorandClient = AlgorandClient.testNet(); }
+  if (network == 'localnet') { algorandClient = AlgorandClient.defaultLocalNet(); }
   if (network == 'custom') {
     const algodUrl = storage.getString('algodUrl');
     const algodToken = storage.getString('algodToken');
@@ -70,9 +77,26 @@ export async function validateSetNetwork(): Promise<Boolean> {
     const indexerToken = storage.getString('indexerToken');
     const indexerPort = storage.getString('indexerPort');
 
+    if (!algodUrl || algodUrl.trim().length === 0) {
+      console.warn('Custom network missing algodUrl');
+      return false;
+    }
+    if (algodToken === undefined || algodPort === undefined) {
+      console.warn('Custom network missing algodToken/algodPort');
+      return false;
+    }
+    if (!indexerUrl || indexerUrl.trim().length === 0) {
+      console.warn('Custom network missing indexerUrl');
+      return false;
+    }
+    if (indexerToken === undefined || indexerPort === undefined) {
+      console.warn('Custom network missing indexerToken/indexerPort');
+      return false;
+    }
+
     try {
-      const algod = new Algodv2(algodToken!, algodUrl!, algodPort!);
-      const indexer = new Indexer(indexerToken!, indexerUrl!, indexerPort!);
+      const algod = new algosdk.Algodv2(algodToken, algodUrl, algodPort);
+      const indexer = new algosdk.Indexer(indexerToken, indexerUrl, indexerPort);
       algorandClient = AlgorandClient.fromClients({ algod, indexer });
     } catch (e) {
       console.warn('Error configuring custom network:', e);
@@ -96,7 +120,7 @@ export async function validateSetNetwork(): Promise<Boolean> {
 }
 
 export async function validateNetworkConfig(
-  network: 'mainnet' | 'testnet' | 'custom',
+  network: 'mainnet' | 'testnet' | 'localnet' | 'custom',
   config?: {
     algodUrl?: string;
     algodToken?: string;
@@ -111,6 +135,7 @@ export async function validateNetworkConfig(
   let mithrasAppId: string | undefined = undefined;
   if (network === 'mainnet') mithrasAppId = Config.MAINNET_MITHRAS_APP_ID;
   if (network === 'testnet') mithrasAppId = Config.TESTNET_MITHRAS_APP_ID;
+  if (network === 'localnet') mithrasAppId = Config.LOCALNET_MITHRAS_APP_ID;
   if (network === 'custom') mithrasAppId = config?.mithrasAppId;
 
   if (!mithrasAppId) {
@@ -125,8 +150,16 @@ export async function validateNetworkConfig(
     algorandClient = AlgorandClient.testNet();
   } else if (network === 'custom') {
     try {
-      const algod = new Algodv2(config?.algodToken || '', config?.algodUrl || '', config?.algodPort || '');
-      const indexer = new Indexer(config?.indexerToken || '', config?.indexerUrl || '', config?.indexerPort || '');
+      if (!config?.algodUrl || config.algodToken === undefined || config.algodPort === undefined) {
+        console.warn('Custom network validation missing algod config');
+        return false;
+      }
+      if (!config?.indexerUrl || config.indexerToken === undefined || config.indexerPort === undefined) {
+        console.warn('Custom network validation missing indexer config');
+        return false;
+      }
+      const algod = new algosdk.Algodv2(config.algodToken, config.algodUrl, config.algodPort);
+      const indexer = new algosdk.Indexer(config.indexerToken, config.indexerUrl, config.indexerPort);
       algorandClient = AlgorandClient.fromClients({ algod, indexer });
     } catch (e) {
       console.warn('Error configuring custom network for validation:', e);
@@ -161,47 +194,65 @@ export async function getAlgorandClient(): Promise<AlgorandClient> {
   if (network === 'testnet') {
     return AlgorandClient.testNet();
   }
+  if (network === 'localnet') {
+    return AlgorandClient.defaultLocalNet();
+  }
   if (network === 'custom') {
-    const algodUrl = storage.getString('algodUrl')!;
-    const algodToken = storage.getString('algodToken')!;
-    const algodPort = storage.getString('algodPort')!;
-    const indexerUrl = storage.getString('indexerUrl')!;
-    const indexerToken = storage.getString('indexerToken')!;
-    const indexerPort = storage.getString('indexerPort')!;
+    const algodUrl = storage.getString('algodUrl');
+    const algodToken = storage.getString('algodToken');
+    const algodPort = storage.getString('algodPort');
+    const indexerUrl = storage.getString('indexerUrl');
+    const indexerToken = storage.getString('indexerToken');
+    const indexerPort = storage.getString('indexerPort');
 
-    const algod = new Algodv2(algodToken, algodUrl, algodPort);
-    const indexer = new Indexer(indexerToken, indexerUrl, indexerPort);
+    if (!algodUrl || algodToken === undefined || algodPort === undefined) {
+      throw new Error('Custom network missing algodUrl/algodToken/algodPort');
+    }
+    if (!indexerUrl || indexerToken === undefined || indexerPort === undefined) {
+      throw new Error('Custom network missing indexerUrl/indexerToken/indexerPort');
+    }
+
+    const algod = new algosdk.Algodv2(algodToken, algodUrl, algodPort);
+    const indexer = new algosdk.Indexer(indexerToken, indexerUrl, indexerPort);
     return AlgorandClient.fromClients({ algod, indexer });
   }
 
   throw new Error('Invalid network configuration');
 }
 
-
-export async function getPublicAddressesAndBalances(): Promise<{ address: string; balance: number }[]> {
+/**
+ * Fetch balance (microAlgos) for a single address.
+ */
+export async function getBalanceForAddress(address: string): Promise<number> {
   const algorandClient = await getAlgorandClient();
-  const addresses = storage.getAllKeys().filter(k => k.startsWith('address:')).map(k => storage.getString(k)).filter((a): a is string => !!a);
-
-  if (addresses.length === 0) {
-    console.warn('No public addresses found in storage');
-    return [];
+  try {
+    const info = await algorandClient.client.algod.accountInformation(address).do();
+    console.log("info:", info);
+    const funds = (info as any)?.amount ?? 0;
+    return Number(funds) || 0;
+  } catch (e) {
+    console.warn(`Error fetching balance for address ${address}:`, e);
+    return 0;
   }
-
-  const results: { address: string; balance: number }[] = [];
-  for (const address of addresses) {
-    try {
-      const info = await algorandClient.client.algod.accountInformation(address).do();
-      results.push({ address, balance: Number(info.amount) || 0 });
-    } catch (e) {
-      console.warn(`Error fetching balance for address ${address}:`, e);
-      results.push({ address, balance: 0 });
-    }
-  }
-
-  return results;
 }
 
+// Simple check to see if a valid network is configured
+// If false, we need to prompt the user to set one up.
 export function hasNetwork(): boolean {
   const network = storage.getString('network');
-  return network === 'mainnet' || network === 'testnet' || network === 'custom';
+  return network === 'mainnet' || network === 'testnet' || network === 'localnet' || network === 'custom';
+}
+
+
+// Get the typed Mithras Client for the currently configured network and Mithras app ID.
+export const getMithrasClient = async (): Promise<MithrasClient> => {
+  const algorandClient = await getAlgorandClient()
+  const mithrasAppId = storage.getString('mithrasAppId');
+  if (!mithrasAppId) {
+    throw new Error('Mithras App ID not set in storage');
+  }
+  return algorandClient.client.getTypedAppClientById(MithrasClient, {
+    appId: BigInt(mithrasAppId),
+  });
+
 }

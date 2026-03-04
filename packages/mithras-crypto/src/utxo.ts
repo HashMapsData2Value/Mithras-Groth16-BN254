@@ -1,19 +1,20 @@
 import { bytesToNumberBE, numberToBytesBE } from "@noble/curves/utils.js";
 import {
-  getHpkeSuite,
   HpkeEnvelope,
   SupportedHpkeSuite,
   TransactionMetadata,
-} from "./hpke";
+  hpkeOpenBase,
+  hpkeSealBase,
+} from "./hpke.js";
 import {
   deriveStealthPubkey,
   deriveStealthScalar,
   ViewKeypair,
-} from "./keypairs";
-import { computeViewSecretSender, computeViewTag } from "./view";
-import { MithrasAddr } from "./address";
-import { mimcSum } from "./mimc";
-import { addressInScalarField } from "../../mithras-contracts-and-circuits/src";
+} from "./keypairs.js";
+import { computeViewSecretSender, computeViewTag } from "./view.js";
+import { MithrasAddr } from "./address.js";
+import { mimcSum } from "./mimc.js";
+import { addressInScalarField } from "./extracted.js";
 
 export const SECRET_SIZE: number = 136;
 
@@ -75,22 +76,16 @@ export class UtxoSecrets {
     viewKeypair: ViewKeypair,
     txnMetadata: TransactionMetadata,
   ): Promise<UtxoSecrets> {
-    const hpke = getHpkeSuite(hpkeEnvelope.suite);
-
-    const recvCtx = await hpke.createRecipientContext({
-      recipientKey: await hpke.kem.deserializePrivateKey(
-        viewKeypair.privateKey,
-      ),
-      enc: hpkeEnvelope.encapsulatedKey,
-      info: txnMetadata.info(),
-    });
-
-    const plaintext = await recvCtx.open(
-      hpkeEnvelope.ciphertext,
+    const plaintext = await hpkeOpenBase(
+      hpkeEnvelope.suite,
+      viewKeypair.privateKey,
+      hpkeEnvelope.encapsulatedKey,
+      txnMetadata.info(),
       txnMetadata.aad(),
+      hpkeEnvelope.ciphertext,
     );
 
-    return UtxoSecrets.fromBytes(new Uint8Array(plaintext));
+    return UtxoSecrets.fromBytes(plaintext);
   }
 
   computeCommitment(): bigint {
@@ -123,8 +118,6 @@ export class UtxoInputs {
     amount: bigint,
     receiver: MithrasAddr,
   ): Promise<UtxoInputs> {
-    const hpke = getHpkeSuite(SupportedHpkeSuite.x25519Sha256ChaCha20Poly1305);
-
     const ephemeralKeypair = ViewKeypair.generate();
 
     const viewSecret = computeViewSecretSender(
@@ -161,20 +154,19 @@ export class UtxoInputs {
       stealthPubkey,
     );
 
-    const senderCtx = await hpke.createSenderContext({
-      recipientPublicKey: await hpke.kem.deserializePublicKey(
-        receiver.viewX25519,
-      ),
-      info: txnMetadata.info(),
-    });
-
-    const ct = await senderCtx.seal(mithrasSecret.toBytes(), txnMetadata.aad());
+    const sealed = await hpkeSealBase(
+      SupportedHpkeSuite.x25519Sha256ChaCha20Poly1305,
+      receiver.viewX25519,
+      txnMetadata.info(),
+      txnMetadata.aad(),
+      mithrasSecret.toBytes(),
+    );
 
     const hpkeEnvelope = new HpkeEnvelope(
       1,
       SupportedHpkeSuite.x25519Sha256ChaCha20Poly1305,
-      new Uint8Array(senderCtx.enc),
-      new Uint8Array(ct),
+      sealed.enc,
+      sealed.ciphertext,
       viewTag,
       ephemeralKeypair.publicKey,
     );

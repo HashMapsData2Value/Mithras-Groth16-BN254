@@ -57,12 +57,12 @@ export function DepositProofScreen({ onBack }: Props) {
     };
 
     if (Platform.OS === 'android' || Platform.OS === 'ios') {
-      const filePath = await loadAssets('deposit.zkey', { force: true });
+      const filePath = await loadAssets('deposit_test.zkey', { force: true });
       const zkeyPath = filePath.replace('file://', '');
       lastZkeyPathRef.current = zkeyPath;
 
       try {
-        const res: CircomProofResult = await generateCircomProof(
+        const res: CircomProofResult = generateCircomProof(
           zkeyPath,
           JSON.stringify(circuitInputs),
           ProofLib.Arkworks

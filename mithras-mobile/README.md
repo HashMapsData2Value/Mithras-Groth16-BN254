@@ -30,8 +30,8 @@ This should only be done in case you've made changes to the ZK circuit itself or
 2) Run `pnpm run build && pnpm run test`. (The crucial part is that hte build command runs the zkey.sh script, which produces the .wasm and .zkey files necesary. But it is good to build the Algorand contracts files and the full test suite to make sure things are OK.)
 3) Run:
      ```
-     mv /circuit/deposit_test.zkey ../../mithras-mobile/test-vectors/deposit.zkey
-     mv /circuit/spend_test.zkey ../../mithras-mobile/test-vectors/spend.zkey
+     mv /circuit/deposit_test.zkey ../../mithras-mobile/test-vectors/deposit_test.zkey
+     mv /circuit/spend_test.zkey ../../mithras-mobile/test-vectors/spend_test.zkey
      mv /circuit/deposit_js/deposit.wasm ../../mithras-mobile/test-vectors/deposit.wasm
      mv /circuit/spend_js/spend.wasm ../../mithras-mobile/test-vectors/spend.wasm
      ```

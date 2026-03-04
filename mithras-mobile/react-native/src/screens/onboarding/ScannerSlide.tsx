@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
-import { scanAddresses, truncAddress } from '../../services/hdwallet';
+import { scanAddresses, truncAddress } from '../../services/hdWallet';
 import { useConnectivity } from '../../context/Connectivity';
 
 type ScannedItem = { index: number; address: string };

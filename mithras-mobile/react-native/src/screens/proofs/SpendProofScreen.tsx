@@ -93,7 +93,7 @@ export function SpendProofScreen({ onBack }: Props) {
     };
 
     if (Platform.OS === 'android' || Platform.OS === 'ios') {
-      const filePath = await loadAssets('spend.zkey', { force: true });
+      const filePath = await loadAssets('spend_test.zkey', { force: true });
       const zkeyPath = filePath.replace('file://', '');
       lastZkeyPathRef.current = zkeyPath;
 
