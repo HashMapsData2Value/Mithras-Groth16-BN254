@@ -95,9 +95,9 @@ type VerificationParamsCall = {
   paramsCallback: (params: VerificationParams) => Promise<void>;
   addExtraLsigs?: boolean;
 } & (
-  | { inputs: unknown }
-  | { proof: Groth16Bn254ProofBytes; signals: bigint[] }
-);
+    | { inputs: unknown }
+    | { proof: Groth16Bn254ProofBytes; signals: bigint[] }
+  );
 
 type LsigVerifierLike = {
   verificationParams(args: VerificationParamsCall): Promise<void>;
@@ -248,7 +248,7 @@ class PrecompiledGroth16Bn254LsigVerifier implements LsigVerifierLike {
       });
       params.extraLsigsTxns.push(lsigPay);
       if (args.addExtraLsigs ?? true) {
-        args.composer.addTransaction(lsigPay);
+        args.composer.addTransaction(lsigPay, (extraLsig as any).signer);
       }
     }
   }
@@ -368,18 +368,18 @@ export class MithrasProtocolClient {
     this.depositVerifier =
       !hasWebAssembly() && opts?.depositVerifierProgram
         ? new PrecompiledGroth16Bn254LsigVerifier(
-            algorand,
-            opts.depositVerifierProgram,
-            DEPOSIT_LSIGS,
-          )
+          algorand,
+          opts.depositVerifierProgram,
+          DEPOSIT_LSIGS,
+        )
         : depositVerifier(algorand, opts);
     this.spendVerifier =
       !hasWebAssembly() && opts?.spendVerifierProgram
         ? new PrecompiledGroth16Bn254LsigVerifier(
-            algorand,
-            opts.spendVerifierProgram,
-            SPEND_LSIGS,
-          )
+          algorand,
+          opts.spendVerifierProgram,
+          SPEND_LSIGS,
+        )
         : spendVerifier(algorand, opts);
 
     this.appClient = algorand.client.getTypedAppClientById(MithrasClient, {

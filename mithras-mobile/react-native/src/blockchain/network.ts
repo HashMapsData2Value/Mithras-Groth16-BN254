@@ -227,7 +227,6 @@ export async function getBalanceForAddress(address: string): Promise<number> {
   const algorandClient = await getAlgorandClient();
   try {
     const info = await algorandClient.client.algod.accountInformation(address).do();
-    console.log("info:", info);
     const funds = (info as any)?.amount ?? 0;
     return Number(funds) || 0;
   } catch (e) {

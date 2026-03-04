@@ -4,20 +4,62 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { truncAddress } from '../services/hdWallet';
 import { getBalanceForAddress } from '../blockchain/network';
 import { getShieldedAddressEntries } from '../services/shWallet';
-import { depositToShieldedPool } from '../blockchain/transactions';
+import { depositToShieldedPool, spendFromShieldedPool } from '../blockchain/transactions';
+import { getShieldedBalanceByReceiverIndexMicroAlgos, getUnspentUtxoRecords } from '../services/utxoStore';
 
 type Props = {
   address: string;
   publicIndex?: number;
+  shieldedIndex?: number;
   balance?: number | string;
+  onAfterSpend?: () => void | Promise<void>;
 };
 
-export default function AddressCard({ address, publicIndex, balance }: Props) {
+export default function AddressCard({ address, publicIndex, shieldedIndex, balance, onAfterSpend }: Props) {
   const [copied, setCopied] = React.useState(false);
   const [depositOpen, setDepositOpen] = React.useState(false);
   const [depositAmount, setDepositAmount] = React.useState('');
+  const [sendOpen, setSendOpen] = React.useState(false);
+  const [sendAmount, setSendAmount] = React.useState('');
+  const [sendTo, setSendTo] = React.useState('');
   const [bal, setBal] = React.useState<number | string | undefined>(balance);
   const [busy, setBusy] = React.useState(false);
+  const [utxoExpanded, setUtxoExpanded] = React.useState(false);
+
+  const longPressGuardRef = React.useRef(false);
+
+  const isShielded = address.startsWith('mith');
+
+  const utxosForThisShielded = React.useMemo(() => {
+    if (!isShielded) return [];
+    if (!utxoExpanded) return [];
+    if (typeof shieldedIndex !== 'number') return [];
+
+    const recs = getUnspentUtxoRecords().filter((r) => r.receiverShieldedIndex === shieldedIndex);
+    // Show largest first (more relevant for single-input spends)
+    recs.sort((a, b) => {
+      let aa = 0n;
+      let bb = 0n;
+      try {
+        aa = BigInt(a.amount);
+      } catch {
+        aa = 0n;
+      }
+      try {
+        bb = BigInt(b.amount);
+      } catch {
+        bb = 0n;
+      }
+      return aa > bb ? -1 : aa < bb ? 1 : 0;
+    });
+    return recs;
+  }, [isShielded, utxoExpanded, shieldedIndex, bal]);
+
+  const truncUtxoId = (id: string) => {
+    const s = String(id ?? '');
+    if (s.length <= 12) return s;
+    return `${s.slice(0, 6)}…${s.slice(-4)}`;
+  };
 
   const onCopy = () => {
     try {
@@ -31,10 +73,33 @@ export default function AddressCard({ address, publicIndex, balance }: Props) {
   };
 
   const onPress = () => {
+    if (longPressGuardRef.current) return;
+    if (isShielded) {
+      if (busy) return;
+      if (typeof shieldedIndex !== 'number') {
+        Alert.alert('Missing shielded index', 'This shielded address is missing its derivation index.');
+        return;
+      }
+      setSendTo('');
+      setSendAmount('');
+      setSendOpen(true);
+      return;
+    }
+
     if (typeof publicIndex !== 'number') return;
     // quick tap opens deposit modal
     setDepositAmount('');
     setDepositOpen(true);
+  };
+
+  const onLongPress = () => {
+    longPressGuardRef.current = true;
+    setTimeout(() => {
+      longPressGuardRef.current = false;
+    }, 250);
+
+    // Long-press copies for both public and shielded cards.
+    onCopy();
   };
 
   const formatBalance = (b?: number | string) => {
@@ -116,17 +181,52 @@ export default function AddressCard({ address, publicIndex, balance }: Props) {
 
   return (
     <>
-      <Pressable style={styles.card} onLongPress={onCopy} onPress={onPress} accessibilityLabel="Address card">
+      <Pressable style={styles.card} onLongPress={onLongPress} onPress={onPress} accessibilityLabel="Address card">
         <View style={styles.left}>
           <Text style={styles.address} numberOfLines={1} ellipsizeMode="middle">
             {truncAddress(address)}
           </Text>
+
+          {isShielded ? (
+            <Pressable
+              style={styles.utxoToggle}
+              onPress={(e) => {
+                (e as any)?.stopPropagation?.();
+                setUtxoExpanded((v) => !v);
+              }}
+              onLongPress={(e) => {
+                (e as any)?.stopPropagation?.();
+              }}
+              accessibilityLabel="Toggle UTXO list"
+              hitSlop={8}
+            >
+              <Text style={styles.utxoToggleText}>{utxoExpanded ? 'v' : '>'}</Text>
+            </Pressable>
+          ) : null}
+
           {copied ? <Text style={styles.copiedText}>Copied</Text> : null}
         </View>
         <View style={styles.right}>
           <Text style={styles.balance}>{formatBalance(bal)} ALGO</Text>
         </View>
       </Pressable>
+
+      {isShielded && utxoExpanded ? (
+        <View style={styles.utxoList}>
+          {utxosForThisShielded.length === 0 ? (
+            <View style={styles.utxoRow}>
+              <Text style={styles.utxoRowText}>No unspent UTXOs</Text>
+            </View>
+          ) : (
+            utxosForThisShielded.map((u) => (
+              <View key={u.id} style={styles.utxoRow}>
+                <Text style={styles.utxoRowText}>{formatBalance(u.amount)} ALGO</Text>
+                <Text style={styles.utxoRowSubText}>{truncUtxoId(u.id)}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      ) : null}
 
       <AddressCardModal
         visible={depositOpen}
@@ -177,7 +277,169 @@ export default function AddressCard({ address, publicIndex, balance }: Props) {
         amount={depositAmount}
         setAmount={setDepositAmount}
       />
+
+      <ShieldedSendModal
+        visible={sendOpen}
+        onClose={() => {
+          if (busy) return;
+          setSendOpen(false);
+        }}
+        fromShieldedIndex={shieldedIndex}
+        balance={bal}
+        amount={sendAmount}
+        setAmount={setSendAmount}
+        toAddress={sendTo}
+        setToAddress={setSendTo}
+        onConfirm={({ toShieldedAddress, amountALGO }) => {
+          const micro = Math.round(amountALGO * 1_000_000);
+          if (typeof shieldedIndex !== 'number') {
+            Alert.alert('Missing signer', 'This shielded address is missing a derivation index.');
+            return;
+          }
+
+          setSendOpen(false);
+          setBusy(true);
+
+          (async () => {
+            try {
+              const res = await spendFromShieldedPool({
+                fromShieldedIndex: shieldedIndex,
+                toShieldedAddress,
+                amountMicroAlgos: BigInt(micro),
+              });
+
+              const txIds = Array.isArray(res?.txIds) ? res.txIds.join(', ') : '(unknown)';
+              Alert.alert('Spend submitted', `TxIDs: ${txIds}`);
+
+              // Update the displayed balance based on local UTXO store.
+              const byIndex = getShieldedBalanceByReceiverIndexMicroAlgos();
+              setBal((byIndex.get(shieldedIndex) ?? 0n).toString());
+
+              // After a spend, kick off a refresh so the list/UTXOs reflect the new state.
+              // This should not affect spend success/failure reporting.
+              try {
+                await onAfterSpend?.();
+              } catch (err) {
+                console.warn('Post-spend refresh failed', err);
+              }
+            } catch (e) {
+              console.warn('Spend failed', e);
+              Alert.alert('Spend failed', String(e));
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }}
+      />
     </>
+  );
+}
+
+export function ShieldedSendModal({
+  visible,
+  onClose,
+  fromShieldedIndex,
+  balance,
+  amount,
+  setAmount,
+  toAddress,
+  setToAddress,
+  onConfirm,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  fromShieldedIndex?: number;
+  balance?: number | string;
+  amount: string;
+  setAmount: (s: string) => void;
+  toAddress: string;
+  setToAddress: (s: string) => void;
+  onConfirm: (payload: { toShieldedAddress: string; amountALGO: number }) => void;
+}) {
+  const formatBalance = (b?: number | string) => {
+    if (b === undefined || b === null) return '-';
+    if (typeof b === 'number') {
+      if (!isFinite(b)) return '-';
+      const algo = b / 1_000_000;
+      return algo.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    }
+
+    const s = b.trim();
+    if (!/^(\d+)$/.test(s)) {
+      const n = Number(s);
+      if (!isFinite(n)) return '-';
+      const algo = n / 1_000_000;
+      return algo.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    }
+
+    try {
+      const micro = BigInt(s);
+      const whole = micro / 1_000_000n;
+      const frac = micro % 1_000_000n;
+      const fracStr = frac.toString().padStart(6, '0').replace(/0+$/, '');
+      return fracStr.length ? `${whole.toString()}.${fracStr}` : whole.toString();
+    } catch {
+      return '-';
+    }
+  };
+
+  const handleConfirm = () => {
+    if (typeof fromShieldedIndex !== 'number') {
+      Alert.alert('Missing shielded index', 'This shielded address is missing its derivation index.');
+      return;
+    }
+
+    const n = Number(amount);
+    if (!isFinite(n) || n <= 0) {
+      Alert.alert('Invalid amount', 'Please enter a valid amount in ALGO');
+      return;
+    }
+
+    const to = toAddress.trim();
+    if (!to) {
+      Alert.alert('Missing address', 'Please enter a recipient shielded address');
+      return;
+    }
+
+    onConfirm({ toShieldedAddress: to, amountALGO: n });
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Send from shielded address</Text>
+          <Text style={styles.modalSubtitle}>Current balance: {formatBalance(balance)} ALGO</Text>
+
+          <TextInput
+            style={styles.modalInput}
+            keyboardType="numeric"
+            placeholder="Amount (ALGO)"
+            placeholderTextColor="#C9B8FF"
+            value={amount}
+            onChangeText={setAmount}
+          />
+          <TextInput
+            style={styles.modalInput}
+            placeholder="Recipient shielded address (mith...)"
+            placeholderTextColor="#C9B8FF"
+            value={toAddress}
+            onChangeText={setToAddress}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <View style={styles.modalButtonsRow}>
+            <Pressable style={[styles.modalButton, styles.modalButtonSecondary]} onPress={onClose}>
+              <Text style={styles.modalButtonText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={[styles.modalButton, styles.modalButtonPrimary]} onPress={handleConfirm}>
+              <Text style={styles.modalButtonText}>Send</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -441,6 +703,54 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 8,
     fontWeight: '600',
+  },
+  utxoToggle: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  utxoToggleText: {
+    color: '#EDE7FF',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: -1,
+  },
+  utxoList: {
+    width: '100%',
+    maxWidth: 420,
+    marginTop: -6,
+    marginBottom: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    overflow: 'hidden',
+  },
+  utxoRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  utxoRowText: {
+    color: '#C9B8FF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  utxoRowSubText: {
+    color: '#EDE7FF',
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.8,
   },
   copyText: {
     color: '#EDE7FF',

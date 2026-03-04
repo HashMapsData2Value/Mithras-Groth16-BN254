@@ -11,6 +11,7 @@ import {
   Animated,
   SafeAreaView,
   Easing,
+  DevSettings,
 } from 'react-native';
 
 import { styles } from './menu/MenuStyles';
@@ -21,6 +22,7 @@ import PublicScreen from './menu/PublicScreen';
 import ShieldedScreen from './menu/ShieldedScreen';
 import { AddBall } from './menu/AddBall';
 import { getNextAddressIndex } from '../services/hdWallet';
+import { wipeLocalDataExceptMnemonic } from '../services/appReset';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -295,6 +297,39 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
             <ActionButton label="Make My Algos Private (Deposit)" onPress={onDeposit} />
             <ActionButton label="Transfer Private Algos (Spend)" onPress={onSpend} />
             <ActionButton label="Multiplier (debug)" onPress={onMultiplier} />
+            <ActionButton
+              label="Wipe local data (keep mnemonic)"
+              onPress={() => {
+                Alert.alert(
+                  'Wipe local data?',
+                  'This clears cached state (UTXOs, Merkle cache, network/appId settings, etc.) but keeps your mnemonic. The app will reload after wiping.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Wipe',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await wipeLocalDataExceptMnemonic();
+                        } catch (e) {
+                          Alert.alert('Wipe failed', String(e));
+                          return;
+                        }
+
+                        // Give storage a tick to flush, then reload JS to fully reset in-memory state.
+                        setTimeout(() => {
+                          try {
+                            DevSettings.reload();
+                          } catch {
+                            // If reload isn't available (e.g. some release builds), user can manually restart.
+                          }
+                        }, 200);
+                      },
+                    },
+                  ],
+                );
+              }}
+            />
             <ActionButton
               label="Deploy Mithras (localnet)"
               onPress={async () => {

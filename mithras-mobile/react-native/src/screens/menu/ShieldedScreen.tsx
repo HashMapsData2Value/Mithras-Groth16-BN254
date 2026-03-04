@@ -1,11 +1,14 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, Text, Modal } from 'react-native';
+import { View, StyleSheet, Pressable, Text, Modal, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import AddressCard from '../../components/AddressCard';
 import { getShieldedAddressEntries, addShieldedAddr } from '../../services/shWallet';
 import { truncAddress } from '../../services/hdWallet';
 import { AckAlert } from '../../components/Alert';
 import { getShieldedBalanceByReceiverIndexMicroAlgos } from '../../services/utxoStore';
 import { scanShieldedUtxos } from '../../services/shieldedScanner';
+import { refreshMerkleRoot } from '../../blockchain/transactions';
+import { getAlgorandClient } from '../../blockchain/network';
+import { storage } from '../../services/storage';
 
 type ShieldedScreenProps = {
   confirm?: { visible: boolean; index: number | null; target?: 'public' | 'shielded' };
@@ -17,6 +20,24 @@ export function ShieldedScreen({ confirm, setConfirm }: ShieldedScreenProps) {
   const [items, setItems] = React.useState<Array<{ index: number; address: string; balance?: number | string }>>([]);
   const [alert, setAlert] = React.useState<{ visible: boolean; title?: string; message: string }>({ visible: false, title: undefined, message: '' });
   const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshStatus, setRefreshStatus] = React.useState<{ lastScannedRound: number; currentRound?: number } | null>(null);
+
+  const parseRound = (v: any): number | undefined => {
+    if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? Math.floor(v) : undefined;
+    if (typeof v === 'string') {
+      if (!v) return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
+    }
+    if (typeof v === 'bigint') {
+      if (v < 0n) return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
+    }
+    const maybeUint = v?.uint ?? v?.['uint'];
+    if (maybeUint !== undefined) return parseRound(maybeUint);
+    return undefined;
+  };
 
   const refreshLocalBalances = React.useCallback(() => {
     const byIndex = getShieldedBalanceByReceiverIndexMicroAlgos();
@@ -27,6 +48,63 @@ export function ShieldedScreen({ confirm, setConfirm }: ShieldedScreenProps) {
       })),
     );
   }, []);
+
+  const doRefresh = React.useCallback(
+    async ({ showAlert }: { showAlert: boolean }) => {
+      if (refreshing) return;
+      setRefreshing(true);
+
+      // Show incremental-scan status while refreshing.
+      const lastRaw = storage.getString('shielded:lastScannedRound');
+      const lastScannedRound = parseRound(lastRaw) ?? 0;
+      setRefreshStatus({ lastScannedRound, currentRound: undefined });
+
+      // Fetch current chain round (best-effort).
+      try {
+        const algorandClient = await getAlgorandClient();
+        const status = await algorandClient.client.algod.status().do();
+        const currentRound =
+          parseRound((status as any)?.['last-round']) ??
+          parseRound((status as any)?.lastRound) ??
+          parseRound((status as any)?.['lastRound']);
+        if (typeof currentRound === 'number') {
+          setRefreshStatus((prev) => (prev ? { ...prev, currentRound } : prev));
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        // Merkle sync is what unblocks spends. Keep attempts low here to avoid a long UI hang;
+        // spend itself will retry more.
+        try {
+          await refreshMerkleRoot({ maxAttempts: 3, baseDelayMs: 350 });
+        } catch {
+          // Ignore merkle sync errors here; the scan itself can still succeed.
+        }
+
+        const res = await scanShieldedUtxos();
+        refreshLocalBalances();
+
+        const message = `Scanned ${res.scannedTxns} txns; decrypted ${res.decryptedNotes}.`;
+        console.log(`[shielded] Refresh/Scan complete (alert=${showAlert})`, message);
+
+        if (showAlert) setAlert({ visible: true, title: 'Scan complete', message });
+      } catch (e) {
+        console.warn('Shielded scan failed', e);
+        if (showAlert) {
+          setAlert({ visible: true, title: 'Scan failed', message: String(e) });
+        }
+      } finally {
+        setRefreshing(false);
+        setRefreshStatus(null);
+      }
+    },
+    [refreshLocalBalances, refreshing],
+  );
+
+  const onRefresh = React.useCallback(async () => doRefresh({ showAlert: true }), [doRefresh]);
+  const onPostSpendRefresh = React.useCallback(async () => doRefresh({ showAlert: false }), [doRefresh]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -56,37 +134,42 @@ export function ShieldedScreen({ confirm, setConfirm }: ShieldedScreenProps) {
 
   return (
     <View style={styles.root}>
-      <View style={styles.container}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <Pressable
           style={[styles.refreshButton, refreshing ? styles.refreshButtonDisabled : null]}
           disabled={refreshing}
-          onPress={async () => {
-            setRefreshing(true);
-            try {
-              const res = await scanShieldedUtxos();
-              refreshLocalBalances();
-              setAlert({
-                visible: true,
-                title: 'Scan complete',
-                message: `Scanned ${res.scannedTxns} txns; decrypted ${res.decryptedNotes}; marked spent ${res.markedSpent}.`,
-              });
-            } catch (e) {
-              console.warn('Shielded scan failed', e);
-              setAlert({ visible: true, title: 'Scan failed', message: String(e) });
-            } finally {
-              setRefreshing(false);
-            }
-          }}
+          onPress={onRefresh}
         >
           <Text style={styles.refreshText}>{refreshing ? 'Refreshing…' : 'Refresh'}</Text>
         </Pressable>
 
+        {refreshing && refreshStatus ? (
+          <View style={styles.refreshStatusRow}>
+            <ActivityIndicator size="small" color="#EDE7FF" />
+            <Text style={styles.refreshStatusText}>
+              last scanned: {refreshStatus.lastScannedRound}  ·  current: {refreshStatus.currentRound ?? '…'}
+            </Text>
+          </View>
+        ) : null}
+
         {items.length === 0 ? (
           <View style={styles.emptyCard} />
         ) : (
-          items.map(it => <AddressCard key={it.address} address={it.address} balance={it.balance} />)
+          items.map((it) => (
+            <AddressCard
+              key={it.address}
+              address={it.address}
+              shieldedIndex={it.index}
+              balance={it.balance}
+              onAfterSpend={onPostSpendRefresh}
+            />
+          ))
         )}
-      </View>
+      </ScrollView>
 
       <AckAlert
         visible={alert.visible}
@@ -140,11 +223,18 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
+  scroll: {
+    flex: 1,
+    width: '100%',
+  },
   container: {
     marginTop: 18,
     width: '100%',
     maxWidth: 420,
+    alignSelf: 'center',
+    flexGrow: 1,
     alignItems: 'center',
+    paddingBottom: 24,
   },
   placeholder: {
     marginTop: 18,
@@ -184,6 +274,22 @@ const styles = StyleSheet.create({
     color: '#EDE7FF',
     fontWeight: '700',
     fontSize: 14,
+  },
+  refreshStatusRow: {
+    width: '100%',
+    maxWidth: 420,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  refreshStatusText: {
+    color: 'rgba(237,231,255,0.85)',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

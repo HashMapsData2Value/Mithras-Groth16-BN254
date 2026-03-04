@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, Text } from 'react-native';
+import { View, StyleSheet, Pressable, Text, ScrollView, RefreshControl } from 'react-native';
 import AddressCard from '../../components/AddressCard';
 import { getPublicAddressEntries, addNextAddress, truncAddress, getNextAddressIndex } from '../../services/hdWallet';
 import { AckAlert } from '../../components/Alert';
@@ -14,16 +14,26 @@ export function PublicScreen({ confirm, setConfirm }: PublicScreenProps) {
   const [loading, setLoading] = React.useState(true);
   const [items, setItems] = React.useState<Array<{ index: number; address: string; balance?: number | string }>>([]);
   const [alert, setAlert] = React.useState<{ visible: boolean; title?: string; message: string }>({ visible: false, title: undefined, message: '' });
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const fetchItems = React.useCallback(async () => {
+    const addrs = await getPublicAddressEntries();
+    // items hold optional balances; keep balance undefined here
+    return addrs.map((a) => ({ index: a.index, address: a.address })) ?? [];
+  }, []);
+
+  const load = React.useCallback(async () => {
+    setItems(await fetchItems());
+  }, [fetchItems]);
 
   React.useEffect(() => {
     let mounted = true;
 
-    async function load() {
+    async function init() {
       try {
-        const addrs = await getPublicAddressEntries();
+        const next = await fetchItems();
         if (!mounted) return;
-        // items hold optional balances; keep balance undefined here
-        setItems(addrs.map(a => ({ index: a.index, address: a.address })) ?? []);
+        setItems(next);
       } catch (err) {
         console.warn('PublicScreen load error', err);
       } finally {
@@ -31,11 +41,23 @@ export function PublicScreen({ confirm, setConfirm }: PublicScreenProps) {
       }
     }
 
-    load();
+    init();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [fetchItems]);
+
+  const onRefresh = React.useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+    } catch (err) {
+      console.warn('PublicScreen refresh error', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshing]);
 
   if (loading) {
     // blank shape placeholder while loading
@@ -44,13 +66,19 @@ export function PublicScreen({ confirm, setConfirm }: PublicScreenProps) {
 
   return (
     <View style={styles.root}>
-      <View style={styles.container}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         {items.length === 0 ? (
           <View style={styles.emptyCard} />
         ) : (
-          items.map(it => <AddressCard key={it.address} address={it.address} publicIndex={it.index} balance={it.balance} />)
+          items.map((it) => (
+            <AddressCard key={it.address} address={it.address} publicIndex={it.index} balance={it.balance} />
+          ))
         )}
-      </View>
+      </ScrollView>
 
       <AckAlert
         visible={alert.visible}
@@ -107,11 +135,18 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
+  scroll: {
+    flex: 1,
+    width: '100%',
+  },
   container: {
     marginTop: 18,
     width: '100%',
     maxWidth: 420,
+    alignSelf: 'center',
+    flexGrow: 1,
     alignItems: 'center',
+    paddingBottom: 24,
   },
   placeholder: {
     marginTop: 18,
