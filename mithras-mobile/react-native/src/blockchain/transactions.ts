@@ -42,6 +42,42 @@ export async function spendTxn(index: number, recipient: string, amountMicroAlgo
   });
 }
 
+export async function transferFromPublicAddress(args: {
+  fromIndex: number;
+  toAddress: string;
+  amountMicroAlgos: bigint;
+}): Promise<{ txIds: string[]; confirmedRound?: number } | any> {
+  const { fromIndex, toAddress, amountMicroAlgos } = args;
+  const algorandClient = await getAlgorandClient();
+
+  if (!algosdk.isValidAddress(toAddress)) {
+    throw new Error('Invalid recipient Algorand address');
+  }
+  if (amountMicroAlgos <= 0n) {
+    throw new Error('amountMicroAlgos must be > 0');
+  }
+  if (amountMicroAlgos > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error('amountMicroAlgos is too large');
+  }
+
+  // Build transaction using the existing helper so it stays exercised.
+  const txn = await spendTxn(fromIndex, toAddress, amountMicroAlgos);
+
+  // Sign and submit via algod.
+  const signer = makeHdWalletSigner(fromIndex, 0);
+  const signed = await signer([txn], [0]);
+  if (!Array.isArray(signed) || signed.length !== 1) {
+    throw new Error('Failed to sign transfer transaction');
+  }
+
+  const sendRes = await algorandClient.client.algod.sendRawTransaction(signed[0]).do();
+  const txId = (sendRes as any)?.txId ?? (sendRes as any)?.txid;
+  if (typeof txId !== 'string' || txId.length === 0) {
+    return { txIds: [] };
+  }
+  return { txIds: [txId] };
+}
+
 
 // Create a Deposit Group Transaction
 /**

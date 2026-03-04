@@ -4,7 +4,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { truncAddress } from '../services/hdWallet';
 import { getBalanceForAddress } from '../blockchain/network';
 import { getShieldedAddressEntries } from '../services/shWallet';
-import { depositToShieldedPool, spendFromShieldedPool } from '../blockchain/transactions';
+import { depositToShieldedPool, spendFromShieldedPool, transferFromPublicAddress } from '../blockchain/transactions';
 import { getShieldedBalanceByReceiverIndexMicroAlgos, getUnspentUtxoRecords } from '../services/utxoStore';
 
 type Props = {
@@ -268,8 +268,52 @@ export default function AddressCard({ address, publicIndex, shieldedIndex, balan
               }
             })();
           } else {
-            console.log(`Transfer request: from=${address} to=${to} amountALGO=${amountALGO} micro=${micro}`);
-            Alert.alert('Transfer', `Transferring ${amountALGO} ALGO (${micro} µA) to ${to}`);
+            if (typeof publicIndex !== 'number') {
+              Alert.alert('Missing signer', 'This address is missing a derivation index.');
+              return;
+            }
+            const toAddr = String(to ?? '').trim();
+            if (!toAddr) {
+              Alert.alert('Missing address', 'Please enter a recipient Algorand address');
+              return;
+            }
+
+            setDepositOpen(false);
+            setBusy(true);
+
+            (async () => {
+              try {
+                console.log(`Transfer request: fromIndex=${publicIndex} to=${toAddr} amountALGO=${amountALGO} micro=${micro}`);
+                const res = await transferFromPublicAddress({
+                  fromIndex: publicIndex,
+                  toAddress: toAddr,
+                  amountMicroAlgos: BigInt(micro),
+                });
+
+                // Refresh sender balance immediately after submit.
+                try {
+                  const n = await getBalanceForAddress(address);
+                  setBal(n);
+                } catch (e) {
+                  console.warn('Transfer balance refresh failed', e);
+                }
+
+                // Also refresh once more shortly after to catch confirmation.
+                setTimeout(() => {
+                  getBalanceForAddress(address)
+                    .then((n) => setBal(n))
+                    .catch(() => undefined);
+                }, 4000);
+
+                const txIds = Array.isArray(res?.txIds) ? res.txIds.join(', ') : '(unknown)';
+                Alert.alert('Transfer submitted', `TxIDs: ${txIds}`);
+              } catch (e) {
+                console.warn('Transfer failed', e);
+                Alert.alert('Transfer failed', String(e));
+              } finally {
+                setBusy(false);
+              }
+            })();
           }
           if (action !== 'deposit') setDepositOpen(false);
         }}
