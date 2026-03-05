@@ -43,9 +43,7 @@ export const MnemonicEntryTopLevel: React.FC<MnemonicEntryProps> = ({ onSaved, o
             setIsValid(ok);
           }
         } else {
-          // While developing, it's a pain to generate and type in a mnemonic every time, 
-          // so prefill with a known test vector if none is stored. Remove in production!
-          setText('nice nest office figure ritual rack live tortoise marine agent want surface input tattoo risk net rebel canvas industry maze come acoustic castle casino');
+          setText('');
         }
       } catch (e) {
         console.warn('Error reading stored mnemonic', e);

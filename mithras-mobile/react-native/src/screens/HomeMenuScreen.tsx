@@ -12,6 +12,8 @@ import {
   SafeAreaView,
   Easing,
   DevSettings,
+  Modal,
+  TextInput,
 } from 'react-native';
 
 import { styles } from './menu/MenuStyles';
@@ -23,6 +25,7 @@ import ShieldedScreen from './menu/ShieldedScreen';
 import { AddBall } from './menu/AddBall';
 import { getNextAddressIndex } from '../services/hdWallet';
 import { wipeLocalDataExceptMnemonic } from '../services/appReset';
+import { storage } from '../services/storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -48,11 +51,48 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
   const scrollRef = React.useRef<ScrollView | null>(null);
   const [index, setIndex] = React.useState(0);
   const [confirm, setConfirm] = React.useState<{ visible: boolean; index: number | null; target?: 'public' | 'shielded' }>({ visible: false, index: null, target: undefined });
+  const [setAppIdOpen, setSetAppIdOpen] = React.useState(false);
+  const [mithrasAppIdDraft, setMithrasAppIdDraft] = React.useState('');
   const scrollX = React.useRef(new Animated.Value(0)).current;
   const cloud1X = React.useRef(new Animated.Value(0)).current;
   const cloud2X = React.useRef(new Animated.Value(0)).current;
   const cloud3X = React.useRef(new Animated.Value(0)).current;
   // FAB animations will derive from `scrollX` so they move consistently with swipes
+
+  const openSetAppId = () => {
+    const network = storage.getString('network');
+    if (network !== 'localnet') {
+      Alert.alert('Localnet only', 'Switch to localnet network to set mithrasAppId manually.');
+      return;
+    }
+    setMithrasAppIdDraft(storage.getString('mithrasAppId') ?? '');
+    setSetAppIdOpen(true);
+  };
+
+  const saveSetAppId = () => {
+    const network = storage.getString('network');
+    if (network !== 'localnet') {
+      Alert.alert('Localnet only', 'Switch to localnet network to set mithrasAppId manually.');
+      return;
+    }
+
+    const raw = (mithrasAppIdDraft ?? '').trim();
+    if (!/^[0-9]+$/.test(raw)) {
+      Alert.alert('Invalid App ID', 'Enter a positive integer app id.');
+      return;
+    }
+    try {
+      const v = BigInt(raw);
+      if (v <= 0n) throw new Error('non-positive');
+    } catch {
+      Alert.alert('Invalid App ID', 'Enter a valid positive integer app id.');
+      return;
+    }
+
+    storage.set('mithrasAppId', raw);
+    setSetAppIdOpen(false);
+    Alert.alert('Saved', `mithrasAppId set to ${raw}`);
+  };
 
   const goTo = (i: number) => {
     if (scrollRef.current) {
@@ -341,10 +381,40 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
                 }
               }}
             />
+            <ActionButton label="Set Mithras App ID (localnet)" onPress={openSetAppId} />
             <ActionButton label="Make My Algos Public (Withdraw)" onPress={() => { }} />
           </View>
         </View>
       </Animated.ScrollView>
+
+      <Modal
+        transparent
+        visible={setAppIdOpen}
+        animationType="fade"
+        onRequestClose={() => setSetAppIdOpen(false)}
+      >
+        <View style={localnetModalStyles.overlay}>
+          <View style={localnetModalStyles.modalCard}>
+            <Text style={localnetModalStyles.modalTitle}>Set Mithras App ID</Text>
+            <Text style={localnetModalStyles.modalSubtitle}>Localnet only. Enter the deployed app id.</Text>
+            <TextInput
+              style={localnetModalStyles.modalInput}
+              keyboardType="numeric"
+              placeholder="App ID (e.g. 12345)"
+              value={mithrasAppIdDraft}
+              onChangeText={setMithrasAppIdDraft}
+            />
+            <View style={localnetModalStyles.actionsRow}>
+              <Pressable style={[styles.actionButton, localnetModalStyles.actionButtonCompact]} onPress={() => setSetAppIdOpen(false)}>
+                <Text style={styles.actionButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.actionButton, localnetModalStyles.actionButtonCompact]} onPress={saveSetAppId}>
+                <Text style={styles.actionButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
 
 
@@ -362,3 +432,55 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
     </SafeAreaView>
   );
 }
+
+const localnetModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 18,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  modalTitle: {
+    color: '#EDE7FF',
+    fontWeight: '800',
+    fontSize: 16,
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    color: '#C9B8FF',
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  modalInput: {
+    width: '100%',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    color: '#EDE7FF',
+    marginBottom: 12,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'flex-end',
+  },
+  actionButtonCompact: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flex: 1,
+  },
+});

@@ -2,6 +2,21 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Ensure Circom proving key assets are packaged into the Android APK.
+// We rely on `copyFileAssets('custom/<name>')` at runtime (see `loadAssets.ts`).
+def mithrasKeysDir = new File(rootProject.projectDir.parentFile, "assets/keys")
+def mithrasCustomAssetsDir = new File(project.projectDir, "src/main/assets/custom")
+
+tasks.register("syncMithrasProvingKeys", Copy) {
+    // These are required for proof generation flows.
+    from(mithrasKeysDir)
+    include("spend_test.zkey", "deposit_test.zkey")
+    into(mithrasCustomAssetsDir)
+}
+
+// Run before any build so debug/release both get the assets.
+preBuild.dependsOn(tasks.named("syncMithrasProvingKeys"))
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
