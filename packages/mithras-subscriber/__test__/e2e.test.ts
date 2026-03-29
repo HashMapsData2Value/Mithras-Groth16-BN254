@@ -12,6 +12,22 @@ describe("Mithras App", () => {
   let algorand: AlgorandClient;
   let depositor: Address;
 
+  const verifierOpts = {
+    // NOTE: These tests run with cwd = packages/mithras-subscriber.
+    // The contracts package defaults resolve circuit artifacts relative to cwd,
+    // so we pass explicit paths to the monorepo's canonical circuits.
+    depositZKeyPath:
+      "../mithras-contracts-and-circuits/circuits/deposit_test.zkey",
+    depositWasmPath:
+      "../mithras-contracts-and-circuits/circuits/deposit_js/deposit.wasm",
+    spendZKeyPath: "../mithras-contracts-and-circuits/circuits/spend_test.zkey",
+    spendWasmPath: "../mithras-contracts-and-circuits/circuits/spend_js/spend.wasm",
+    withdrawZKeyPath:
+      "../mithras-contracts-and-circuits/circuits/withdraw_test.zkey",
+    withdrawWasmPath:
+      "../mithras-contracts-and-circuits/circuits/withdraw_js/withdraw.wasm",
+  } as const;
+
   const testSpend = async (
     client: MithrasProtocolClient,
     spender: MithrasAccount,
@@ -68,10 +84,16 @@ describe("Mithras App", () => {
   beforeAll(async () => {
     algorand = AlgorandClient.defaultLocalNet();
     depositor = await algorand.account.localNetDispenser();
+    console.log("Address depositor beforeall:", depositor.toString());
 
     algorand.setSuggestedParamsCacheTimeout(0);
 
-    const deployment = await MithrasProtocolClient.deploy(algorand, depositor);
+    const deployment = await MithrasProtocolClient.deploy(
+      algorand,
+      depositor,
+      verifierOpts,
+    );
+
     appClient = algorand.client.getTypedAppClientById(MithrasClient, {
       appId: deployment.appClient.appId,
       defaultSender: depositor,
@@ -80,7 +102,9 @@ describe("Mithras App", () => {
 
   it("deposit and spend", async () => {
     const initialReceiver = MithrasAccount.generate();
-    const client = new MithrasProtocolClient(algorand, appClient.appId);
+    const client = new MithrasProtocolClient(algorand, appClient.appId, verifierOpts);
+
+    console.log("initial receiver:", initialReceiver.address);
 
     const initialAmount = 1_000_000n;
 
@@ -89,6 +113,7 @@ describe("Mithras App", () => {
       initialAmount,
       initialReceiver.address,
     );
+    console.log("Imse");
 
     await depositGroup.send();
 
@@ -99,11 +124,15 @@ describe("Mithras App", () => {
       spendPubkey: initialReceiver.spendKeypair.publicKey,
     });
 
+    console.log("Vimse");
+
     expect(subscriber.amount).toBe(0n);
 
     await subscriber.subscriber.pollOnce();
 
     expect(subscriber.amount).toBe(initialAmount);
+
+    console.log("Spindel");
 
     const utxo = subscriber.utxos.entries().next().value;
 
@@ -113,12 +142,15 @@ describe("Mithras App", () => {
       initialReceiver.viewKeypair,
     );
 
+    console.log("Klättrar");
+
     expect(secrets.amount).toBe(initialAmount);
 
     const contractRoot = await appClient.state.global.lastComputedRoot();
 
-    expect(contractRoot).toEqual(subscriber.merkleTree.getRoot());
+    console.log("Upp för");
 
+    expect(contractRoot).toEqual(subscriber.merkleTree.getRoot());
     const {
       receiver: secondReceiver,
       receiversSubscriber: secondReceiversSubscriber,
@@ -129,6 +161,7 @@ describe("Mithras App", () => {
       initialAmount / 2n,
     );
 
+    console.log("We got all the way to here...");
     await testSpend(
       client,
       secondReceiver,

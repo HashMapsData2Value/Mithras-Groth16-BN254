@@ -19,9 +19,16 @@ import { equalBytes } from "mithras-subscriber";
 
 const DEPOSIT_LSIGS = 7;
 const SPEND_LSIGS = 12;
+// Withdraw Groth16(BN254) verification is split across multiple LogicSig txns.
+// If this is too low, the verifier txn will fail with an AVM budget error like
+// "dynamic cost budget exceeded" at `ec_pairing_check`.
+// Keep aligned with `mithras-mobile/react-native/scripts/generate-verifier-artifacts.mjs`.
+const WITHDRAW_LSIGS = 12;
 const LSIGS_FEE = BigInt(SPEND_LSIGS) * 1000n;
 const SPEND_APP_FEE = 57n * 1000n;
 const DEPOSIT_APP_FEE = 27n * 1000n;
+// Intentionally low defaults (calibration): bump if underfunded.
+const WITHDRAW_APP_FEE = 2000n;
 const APP_MBR = 1567900n;
 const BOOTSTRAP_FEE = 51n * 1000n;
 const NULLIFIER_MBR = 15_700n;
@@ -45,6 +52,8 @@ export type VerifierOptions = {
   depositWasmPath?: string;
   spendZKeyPath?: string;
   spendWasmPath?: string;
+  withdrawZKeyPath?: string;
+  withdrawWasmPath?: string;
   /**
    * Precompiled LogicSig program bytes for the verifier.
    *
@@ -53,14 +62,16 @@ export type VerifierOptions = {
    */
   depositVerifierProgram?: Uint8Array;
   spendVerifierProgram?: Uint8Array;
+  withdrawVerifierProgram?: Uint8Array;
+
   /**
    * Precomputed verifier LogicSig addresses.
    *
-   * Useful in environments where `WebAssembly` is unavailable (e.g. Hermes).
-   * If provided, `MithrasProtocolClient.deploy()` will not call `lsigAccount()`.
+   * When running without WebAssembly, these are required for deployment.
    */
   depositVerifierAddr?: string;
   spendVerifierAddr?: string;
+  withdrawVerifierAddr?: string;
   onMobile?: boolean;
   assetsDir?: string;
 };
@@ -306,6 +317,31 @@ export function spendVerifier(
   });
 }
 
+export function withdrawVerifier(
+  algorand: AlgorandClient,
+  opts?: VerifierOptions,
+): Groth16Bn254LsigVerifier {
+  const zKey =
+    opts?.withdrawZKeyPath ??
+    defaultCircuitArtifactPath('../circuits/withdraw_test.zkey', 'withdrawZKeyPath');
+  const wasmProver =
+    opts?.withdrawWasmPath ??
+    defaultCircuitArtifactPath(
+      '../circuits/withdraw_js/withdraw.wasm',
+      'withdrawWasmPath',
+    );
+
+  // return new PlonkLsigVerifier({
+  // return new Groth16Bls12381LsigVerifier({
+  return new Groth16Bn254LsigVerifier({
+    algorand,
+    zKey,
+    wasmProver,
+    totalLsigs: WITHDRAW_LSIGS,
+    appOffset: 1,
+  });
+}
+
 function safeCwd(): string | undefined {
   try {
     const p = (globalThis as any).process;
@@ -357,6 +393,7 @@ export class MithrasProtocolClient {
   // spendVerifier: Groth16Bls12381LsigVerifier;
   depositVerifier: LsigVerifierLike;
   spendVerifier: LsigVerifierLike;
+  withdrawVerifier: LsigVerifierLike;
   appClient: MithrasClient;
   private _zeroHashes?: bigint[];
 
@@ -382,6 +419,14 @@ export class MithrasProtocolClient {
         )
         : spendVerifier(algorand, opts);
 
+    this.withdrawVerifier =
+      !hasWebAssembly() && opts?.withdrawVerifierProgram
+        ? new PrecompiledGroth16Bn254LsigVerifier(
+          algorand,
+          opts.withdrawVerifierProgram,
+          WITHDRAW_LSIGS,
+        )
+        : withdrawVerifier(algorand, opts);
     this.appClient = algorand.client.getTypedAppClientById(MithrasClient, {
       appId,
     });
@@ -407,10 +452,15 @@ export class MithrasProtocolClient {
       (hasWebAssembly()
         ? (await spendVerifier(algorand, opts).lsigAccount()).addr.toString()
         : undefined);
+    const withdrawVerifierAddr =
+      opts?.withdrawVerifierAddr ??
+      (hasWebAssembly()
+        ? (await withdrawVerifier(algorand, opts).lsigAccount()).addr.toString()
+        : undefined);
 
-    if (!depositVerifierAddr || !spendVerifierAddr) {
+    if (!depositVerifierAddr || !spendVerifierAddr || !withdrawVerifierAddr) {
       throw new Error(
-        'Failed to resolve verifier addresses. If you are running in an environment without WebAssembly (e.g. React Native Hermes), provide opts.depositVerifierAddr and opts.spendVerifierAddr (precomputed in Node).',
+        'Failed to resolve verifier addresses. If you are running in an environment without WebAssembly (e.g. React Native Hermes), provide opts.depositVerifierAddr, opts.spendVerifierAddr, and opts.withdrawVerifierAddr (precomputed in Node).',
       );
     }
 
@@ -418,6 +468,7 @@ export class MithrasProtocolClient {
       args: {
         depositVerifier: depositVerifierAddr,
         spendVerifier: spendVerifierAddr,
+        withdrawVerifier: withdrawVerifierAddr,
       },
     });
 
@@ -445,6 +496,8 @@ export class MithrasProtocolClient {
     depositVerifierProgram: Uint8Array;
     spendVerifierAddr: string;
     spendVerifierProgram: Uint8Array;
+    withdrawVerifierAddr: string;
+    withdrawVerifierProgram: Uint8Array;
   }> {
     if (!hasWebAssembly()) {
       throw new Error(
@@ -454,16 +507,19 @@ export class MithrasProtocolClient {
 
     const depositLsig: any = await depositVerifier(algorand, opts).lsigAccount();
     const spendLsig: any = await spendVerifier(algorand, opts).lsigAccount();
+    const withdrawLsig: any = await withdrawVerifier(algorand, opts).lsigAccount();
 
     const depositProgram = depositLsig?.lsig?.logic;
     const spendProgram = spendLsig?.lsig?.logic;
-    if (!(depositProgram instanceof Uint8Array) || !(spendProgram instanceof Uint8Array)) {
+    const withdrawProgram = withdrawLsig?.lsig?.logic;
+    if (!(depositProgram instanceof Uint8Array) || !(spendProgram instanceof Uint8Array) || !(withdrawProgram instanceof Uint8Array)) {
       throw new Error('Failed to extract verifier LogicSig program bytes');
     }
 
     const depositAddr = depositLsig.addr?.toString?.() ?? depositLsig.address?.()?.toString?.();
     const spendAddr = spendLsig.addr?.toString?.() ?? spendLsig.address?.()?.toString?.();
-    if (typeof depositAddr !== 'string' || typeof spendAddr !== 'string') {
+    const withdrawAddr = withdrawLsig.addr?.toString?.() ?? withdrawLsig.address?.()?.toString?.();
+    if (typeof depositAddr !== 'string' || typeof spendAddr !== 'string' || typeof withdrawAddr !== 'string') {
       throw new Error('Failed to extract verifier LogicSig addresses');
     }
 
@@ -472,6 +528,8 @@ export class MithrasProtocolClient {
       depositVerifierProgram: depositProgram,
       spendVerifierAddr: spendAddr,
       spendVerifierProgram: spendProgram,
+      withdrawVerifierAddr: withdrawAddr,
+      withdrawVerifierProgram: withdrawProgram,
     };
   }
 
@@ -940,5 +998,245 @@ export class MithrasProtocolClient {
     });
 
     return { spendGroup, feePayment, txnMetadata, circomInputs };
+  }
+
+
+  async composeWithdrawGroup(
+    spender: MithrasAddr,
+    spendKeypair: SpendKeypair,
+    utxoSecrets: UtxoSecrets,
+    merkleProof: MerkleProof,
+    withdrawAmount: bigint,
+    withdrawReceiver: algosdk.Address,
+  ) {
+    const contractRoot = await this.appClient.state.global.lastComputedRoot();
+
+    if (contractRoot !== merkleProof.root) {
+      throw new Error(
+        `Merkle proof root does not match contract's last computed root. Got ${merkleProof.root}, expected ${contractRoot}`,
+      );
+    }
+
+    const withdrawGroup = this.appClient.newGroup();
+
+    const addr = new algosdk.Address(utxoSecrets.stealthPubkey);
+    const stealthSigner = StealthKeypair.derive(
+      spendKeypair,
+      utxoSecrets.stealthScalar,
+    );
+
+    if (!equalBytes(stealthSigner.publicKey, utxoSecrets.stealthPubkey)) {
+      throw new Error(
+        `Stealth keypair does not derive the expected public key. Got ${stealthSigner.publicKey}, expected ${utxoSecrets.stealthPubkey}`,
+      );
+    }
+
+    const signer: algosdk.TransactionSigner = async (
+      txns: algosdk.Transaction[],
+      indexesToSign: number[],
+    ) => {
+      const signedTxns: Uint8Array[] = [];
+
+      for (const index of indexesToSign) {
+        const txn = txns[index];
+        const sig = stealthSigner.rawSign(txn.bytesToSign());
+        const stxn = new algosdk.SignedTransaction({ txn, sig });
+        signedTxns.push(algosdk.encodeMsgpack(stxn));
+      }
+
+      return signedTxns;
+    };
+
+    const senderSigner = { sender: addr, signer };
+    this.algorand.account.setSigner(addr, signer);
+
+    // This transaction must appear immediately after the app call.
+    // It closes the stealth account remainder back to the app address.
+    const feePayment = await this.algorand.createTransaction.payment({
+      ...senderSigner,
+      receiver: addr,
+      amount: microAlgos(0),
+      staticFee: microAlgos(0),
+      closeRemainderTo: this.appClient.appAddress,
+    });
+
+    const withdrawExtraFee =
+      WITHDRAW_APP_FEE + BigInt(WITHDRAW_LSIGS) * 1000n + 2000n;
+    const fee = NULLIFIER_MBR + (1000n + withdrawExtraFee);
+
+    if (withdrawAmount + fee !== utxoSecrets.amount) {
+      throw new Error(
+        `Withdraw must exhaust the note: withdrawAmount + fee must equal utxo amount. Got ${withdrawAmount} + ${fee} != ${utxoSecrets.amount}`,
+      );
+    }
+
+    const inputSignals: Record<string, bigint | bigint[]> = {
+      withdraw_amount: withdrawAmount,
+      fee,
+      utxo_spender: addressInScalarField(utxoSecrets.stealthPubkey),
+      withdraw_receiver: addressInScalarField(withdrawReceiver.publicKey),
+      utxo_spending_secret: utxoSecrets.spendingSecret,
+      utxo_nullifier_secret: utxoSecrets.nullifierSecret,
+      utxo_amount: utxoSecrets.amount,
+      path_selectors: merkleProof.pathSelectors.map((b) => BigInt(b)),
+      utxo_path: merkleProof.pathElements,
+    };
+
+    await this.withdrawVerifier.verificationParams({
+      composer: withdrawGroup,
+      inputs: inputSignals,
+      paramsCallback: async (params) => {
+        const { lsigParams, args } = params;
+
+        const verifierTxn = this.algorand.createTransaction.payment({
+          ...lsigParams,
+          receiver: lsigParams.sender,
+          amount: microAlgos(0),
+        });
+
+        withdrawGroup.withdraw({
+          ...senderSigner,
+          args: {
+            verifierTxn,
+            signals: args.signals,
+            _proof: args.proof,
+            withdrawReceiver: withdrawReceiver.toString(),
+          },
+          staticFee: microAlgos(1000n + withdrawExtraFee),
+        });
+
+        withdrawGroup.addTransaction(feePayment);
+      },
+    });
+
+    return { withdrawGroup, feePayment };
+  }
+
+  /**
+   * Compose a withdraw group while generating the proof externally (e.g. MoPro).
+   */
+  async composeWithdrawGroupWithProver(
+    spender: MithrasAddr,
+    spendKeypair: SpendKeypair,
+    utxoSecrets: UtxoSecrets,
+    merkleProof: MerkleProof,
+    withdrawAmount: bigint,
+    withdrawReceiver: algosdk.Address,
+    prover: (
+      circomInputs: Record<string, string | string[]>,
+    ) => Promise<CircomGroth16ProofResult>,
+  ) {
+    const contractRoot = await this.appClient.state.global.lastComputedRoot();
+
+    if (contractRoot !== merkleProof.root) {
+      throw new Error(
+        `Merkle proof root does not match contract's last computed root. Got ${merkleProof.root}, expected ${contractRoot}`,
+      );
+    }
+
+    const withdrawGroup = this.appClient.newGroup();
+
+    const addr = new algosdk.Address(utxoSecrets.stealthPubkey);
+    const stealthSigner = StealthKeypair.derive(
+      spendKeypair,
+      utxoSecrets.stealthScalar,
+    );
+
+    if (!equalBytes(stealthSigner.publicKey, utxoSecrets.stealthPubkey)) {
+      throw new Error(
+        `Stealth keypair does not derive the expected public key. Got ${stealthSigner.publicKey}, expected ${utxoSecrets.stealthPubkey}`,
+      );
+    }
+
+    const signer: algosdk.TransactionSigner = async (
+      txns: algosdk.Transaction[],
+      indexesToSign: number[],
+    ) => {
+      const signedTxns: Uint8Array[] = [];
+
+      for (const index of indexesToSign) {
+        const txn = txns[index];
+        const sig = stealthSigner.rawSign(txn.bytesToSign());
+        const stxn = new algosdk.SignedTransaction({ txn, sig });
+        signedTxns.push(algosdk.encodeMsgpack(stxn));
+      }
+
+      return signedTxns;
+    };
+
+    const senderSigner = { sender: addr, signer };
+    this.algorand.account.setSigner(addr, signer);
+
+    const feePayment = await this.algorand.createTransaction.payment({
+      ...senderSigner,
+      receiver: addr,
+      amount: microAlgos(0),
+      staticFee: microAlgos(0),
+      closeRemainderTo: this.appClient.appAddress,
+    });
+
+    const withdrawExtraFee =
+      WITHDRAW_APP_FEE + BigInt(WITHDRAW_LSIGS) * 1000n + 2000n;
+    const fee = NULLIFIER_MBR + (1000n + withdrawExtraFee);
+
+    if (withdrawAmount + fee !== utxoSecrets.amount) {
+      throw new Error(
+        `Withdraw must exhaust the note: withdrawAmount + fee must equal utxo amount. Got ${withdrawAmount} + ${fee} != ${utxoSecrets.amount}`,
+      );
+    }
+
+    const inputSignals: Record<string, bigint | bigint[]> = {
+      withdraw_amount: withdrawAmount,
+      fee,
+      utxo_spender: addressInScalarField(utxoSecrets.stealthPubkey),
+      withdraw_receiver: addressInScalarField(withdrawReceiver.publicKey),
+      utxo_spending_secret: utxoSecrets.spendingSecret,
+      utxo_nullifier_secret: utxoSecrets.nullifierSecret,
+      utxo_amount: utxoSecrets.amount,
+      path_selectors: merkleProof.pathSelectors.map((b) => BigInt(b)),
+      utxo_path: merkleProof.pathElements,
+    };
+
+    const circomInputs: Record<string, string | string[]> = {};
+    for (const [k, v] of Object.entries(inputSignals)) {
+      if (Array.isArray(v)) {
+        circomInputs[k] = v.map((x) => x.toString());
+      } else {
+        circomInputs[k] = v.toString();
+      }
+    }
+
+    const proofRes = await prover(circomInputs);
+    const { proof, signals } = circomProofResultToVerificationArgs(proofRes);
+
+    await this.withdrawVerifier.verificationParams({
+      composer: withdrawGroup,
+      proof,
+      signals,
+      paramsCallback: async (params) => {
+        const { lsigParams, args } = params;
+
+        const verifierTxn = this.algorand.createTransaction.payment({
+          ...lsigParams,
+          receiver: lsigParams.sender,
+          amount: microAlgos(0),
+        });
+
+        withdrawGroup.withdraw({
+          ...senderSigner,
+          args: {
+            verifierTxn,
+            signals: args.signals,
+            _proof: args.proof,
+            withdrawReceiver: withdrawReceiver.toString(),
+          },
+          staticFee: microAlgos(1000n + withdrawExtraFee),
+        });
+
+        withdrawGroup.addTransaction(feePayment);
+      },
+    });
+
+    return { withdrawGroup, feePayment, circomInputs };
   }
 }

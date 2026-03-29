@@ -32,6 +32,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 type Props = {
   onDeposit: () => void;
   onSpend: () => void;
+  onWithdraw: () => void;
   onMultiplier: () => void;
 };
 
@@ -47,7 +48,7 @@ function ActionButton({ label, onPress }: { label: string; onPress?: () => void 
   );
 }
 
-export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
+export function HomeMenuScreen({ onDeposit, onSpend, onWithdraw, onMultiplier }: Props) {
   const scrollRef = React.useRef<ScrollView | null>(null);
   const [index, setIndex] = React.useState(0);
   const [confirm, setConfirm] = React.useState<{ visible: boolean; index: number | null; target?: 'public' | 'shielded' }>({ visible: false, index: null, target: undefined });
@@ -136,7 +137,6 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
       a1.stop();
       a2.stop();
       a3.stop();
-
     };
   }, [cloud1X, cloud2X, cloud3X]);
 
@@ -382,7 +382,7 @@ export function HomeMenuScreen({ onDeposit, onSpend, onMultiplier }: Props) {
               }}
             />
             <ActionButton label="Set Mithras App ID (localnet)" onPress={openSetAppId} />
-            <ActionButton label="Make My Algos Public (Withdraw)" onPress={() => { }} />
+            <ActionButton label="Make My Algos Public (Withdraw)" onPress={onWithdraw} />
           </View>
         </View>
       </Animated.ScrollView>

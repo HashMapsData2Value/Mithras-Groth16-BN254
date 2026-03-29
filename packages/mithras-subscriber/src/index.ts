@@ -18,14 +18,18 @@ import base32 from "hi-base32";
 import appspec from "./Mithras.arc56.json" with { type: "json" };
 
 const DEPOSIT_SIGNATURE =
-  "deposit(uint256[],(byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],uint256,uint256,uint256,uint256,uint256,uint256),byte[250],pay,txn)void";
+  "deposit(uint256[],(byte[64],byte[128],byte[64]),byte[250],pay,txn)void";
 const SPEND_SIGNATURE =
-  "spend(uint256[],(byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],byte[96],uint256,uint256,uint256,uint256,uint256,uint256),byte[250],byte[250],txn)void";
+  "spend(uint256[],(byte[64],byte[128],byte[64]),byte[250],byte[250],txn)void";
+const WITHDRAW_SIGNATURE =
+  "withdraw(uint256[],(byte[64],byte[128],byte[64]),address,txn)void";
 
 const DEPOSIT_SELECTOR =
   algosdk.ABIMethod.fromSignature(DEPOSIT_SIGNATURE).getSelector();
 const SPEND_SELECTOR =
   algosdk.ABIMethod.fromSignature(SPEND_SIGNATURE).getSelector();
+const WITHDRAW_SELECTOR =
+  algosdk.ABIMethod.fromSignature(WITHDRAW_SIGNATURE).getSelector();
 
 export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -39,7 +43,7 @@ export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
 
 export class MithrasMethod {
   private constructor(
-    public type: "deposit" | "spend",
+    public type: "deposit" | "spend" | "withdraw",
     public hpke_envelopes: HpkeEnvelope[],
     public commitments: bigint[],
     public nullifier?: bigint,
@@ -91,9 +95,23 @@ export class MithrasMethod {
         [commitment0, commitment1].map((b) => bytesToNumberBE(b)),
         bytesToNumberBE(nullifier),
       );
+    } else if (equalBytes(selector, WITHDRAW_SELECTOR)) {
+      console.debug("Parsing withdraw method from application call arguments");
+      if (args.length !== 4) {
+        return null;
+      }
+
+      const nullifier = args[1].slice(32 + 2, 64 + 2);
+
+      return new MithrasMethod(
+        "withdraw",
+        [],
+        [],
+        bytesToNumberBE(nullifier),
+      );
     } else {
       console.debug(
-        `Unknown method selector: ${selector}. Expected ${DEPOSIT_SELECTOR} or ${SPEND_SELECTOR}`,
+        `Unknown method selector: ${selector}. Expected ${DEPOSIT_SELECTOR} or ${SPEND_SELECTOR} or ${WITHDRAW_SELECTOR}`,
       );
       return null;
     }
@@ -292,7 +310,7 @@ class BaseMithrasSubscriber {
 
     const filter: TransactionFilter = {
       appId,
-      methodSignature: [DEPOSIT_SIGNATURE, SPEND_SIGNATURE],
+      methodSignature: [DEPOSIT_SIGNATURE, SPEND_SIGNATURE, WITHDRAW_SIGNATURE],
       arc28Events: [{ groupName: "mithras", eventName: "NewLeaf" }],
     };
 
@@ -322,7 +340,7 @@ class BaseMithrasSubscriber {
       );
 
       if (this.merkleTree) {
-        for (const event of txn.arc28Events!) {
+        for (const event of txn.arc28Events ?? []) {
           const { leaf } = event.argsByName;
           this.merkleTree.addLeaf(leaf as bigint);
         }
@@ -348,12 +366,14 @@ class BaseMithrasSubscriber {
         return;
       }
 
-      if (method.type === "spend") {
-        if (balanceState.utxos.has(method.nullifier!)) {
-          const { amount } = balanceState.utxos.get(method.nullifier!)!;
-          balanceState.amount -= algosdk.decodeUint64(amount, "bigint");
-          balanceState.utxos.delete(method.nullifier!);
-        }
+      if (
+        (method.type === "spend" || method.type === "withdraw") &&
+        method.nullifier !== undefined &&
+        balanceState.utxos.has(method.nullifier)
+      ) {
+        const { amount } = balanceState.utxos.get(method.nullifier)!;
+        balanceState.amount -= algosdk.decodeUint64(amount, "bigint");
+        balanceState.utxos.delete(method.nullifier);
       }
 
       let firstCommitment = false;

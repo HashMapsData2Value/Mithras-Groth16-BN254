@@ -4,8 +4,9 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { truncAddress } from '../services/hdWallet';
 import { getBalanceForAddress } from '../blockchain/network';
 import { getShieldedAddressEntries } from '../services/shWallet';
-import { depositToShieldedPool, spendFromShieldedPool, transferFromPublicAddress } from '../blockchain/transactions';
+import { depositToShieldedPool, spendFromShieldedPool, transferFromPublicAddress, withdrawFromShieldedPool } from '../blockchain/transactions';
 import { getShieldedBalanceByReceiverIndexMicroAlgos, getUnspentUtxoRecords } from '../services/utxoStore';
+import algosdk from 'algosdk';
 
 type Props = {
   address: string;
@@ -334,8 +335,7 @@ export default function AddressCard({ address, publicIndex, shieldedIndex, balan
         setAmount={setSendAmount}
         toAddress={sendTo}
         setToAddress={setSendTo}
-        onConfirm={({ toShieldedAddress, amountALGO }) => {
-          const micro = Math.round(amountALGO * 1_000_000);
+        onConfirm={async ({ action, to, amountALGO }) => {
           if (typeof shieldedIndex !== 'number') {
             Alert.alert('Missing signer', 'This shielded address is missing a derivation index.');
             return;
@@ -344,35 +344,41 @@ export default function AddressCard({ address, publicIndex, shieldedIndex, balan
           setSendOpen(false);
           setBusy(true);
 
-          (async () => {
-            try {
+          try {
+            if (action === 'spend') {
+              const micro = Math.round(amountALGO * 1_000_000);
               const res = await spendFromShieldedPool({
                 fromShieldedIndex: shieldedIndex,
-                toShieldedAddress,
+                toShieldedAddress: to,
                 amountMicroAlgos: BigInt(micro),
               });
 
               const txIds = Array.isArray(res?.txIds) ? res.txIds.join(', ') : '(unknown)';
               Alert.alert('Spend submitted', `TxIDs: ${txIds}`);
-
-              // Update the displayed balance based on local UTXO store.
-              const byIndex = getShieldedBalanceByReceiverIndexMicroAlgos();
-              setBal((byIndex.get(shieldedIndex) ?? 0n).toString());
-
-              // After a spend, kick off a refresh so the list/UTXOs reflect the new state.
-              // This should not affect spend success/failure reporting.
-              try {
-                await onAfterSpend?.();
-              } catch (err) {
-                console.warn('Post-spend refresh failed', err);
-              }
-            } catch (e) {
-              console.warn('Spend failed', e);
-              Alert.alert('Spend failed', String(e));
-            } finally {
-              setBusy(false);
+            } else {
+              const res = await withdrawFromShieldedPool({
+                fromShieldedIndex: shieldedIndex,
+                toPublicAddress: to,
+              });
+              const txIds = Array.isArray(res?.txIds) ? res.txIds.join(', ') : '(unknown)';
+              Alert.alert('Withdraw submitted', `TxIDs: ${txIds}`);
             }
-          })();
+
+            // Update the displayed balance based on local UTXO store.
+            const byIndex = getShieldedBalanceByReceiverIndexMicroAlgos();
+            setBal((byIndex.get(shieldedIndex) ?? 0n).toString());
+
+            try {
+              await onAfterSpend?.();
+            } catch (err) {
+              console.warn('Post-send refresh failed', err);
+            }
+          } catch (e) {
+            console.warn('Shielded action failed', e);
+            Alert.alert('Action failed', String(e));
+          } finally {
+            setBusy(false);
+          }
         }}
       />
     </>
@@ -398,8 +404,31 @@ export function ShieldedSendModal({
   setAmount: (s: string) => void;
   toAddress: string;
   setToAddress: (s: string) => void;
-  onConfirm: (payload: { toShieldedAddress: string; amountALGO: number }) => void;
+  onConfirm: (payload: { action: 'spend' | 'withdraw'; to: string; amountALGO: number }) => void | Promise<void>;
 }) {
+  const [action, setAction] = React.useState<'spend' | 'withdraw'>('spend');
+
+  const hasUnspentUtxo = React.useMemo(() => {
+    if (typeof fromShieldedIndex !== 'number') return false;
+    try {
+      return getUnspentUtxoRecords().some((r) => {
+        if (r.receiverShieldedIndex !== fromShieldedIndex) return false;
+        try {
+          return BigInt(r.amount) > 0n;
+        } catch {
+          return false;
+        }
+      });
+    } catch {
+      return false;
+    }
+  }, [fromShieldedIndex, visible, balance]);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    setAction('spend');
+  }, [visible]);
+
   const formatBalance = (b?: number | string) => {
     if (b === undefined || b === null) return '-';
     if (typeof b === 'number') {
@@ -433,39 +462,87 @@ export function ShieldedSendModal({
       return;
     }
 
-    const n = Number(amount);
-    if (!isFinite(n) || n <= 0) {
-      Alert.alert('Invalid amount', 'Please enter a valid amount in ALGO');
+    if (action === 'withdraw' && !hasUnspentUtxo) {
+      Alert.alert('No notes available', 'No unspent shielded notes (UTXOs) are available to withdraw.');
       return;
     }
 
     const to = toAddress.trim();
     if (!to) {
-      Alert.alert('Missing address', 'Please enter a recipient shielded address');
+      Alert.alert('Missing address', 'Please enter a recipient address');
       return;
     }
 
-    onConfirm({ toShieldedAddress: to, amountALGO: n });
+    if (action === 'spend') {
+      const n = Number(amount);
+      if (!isFinite(n) || n <= 0) {
+        Alert.alert('Invalid amount', 'Please enter a valid amount in ALGO');
+        return;
+      }
+      if (!to.startsWith('mith')) {
+        Alert.alert('Invalid address', 'Recipient must be a shielded address (mith...)');
+        return;
+      }
+      onConfirm({ action: 'spend', to, amountALGO: n });
+      return;
+    }
+
+    // Withdraw: amount is implied (withdraw all from one selected UTXO).
+    if (!algosdk.isValidAddress(to)) {
+      Alert.alert('Invalid address', 'Recipient must be a valid Algorand address');
+      return;
+    }
+    onConfirm({ action: 'withdraw', to, amountALGO: 0 });
   };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Send from shielded address</Text>
+          <Text style={styles.modalTitle}>{action === 'spend' ? 'Send from shielded address' : 'Withdraw to public address'}</Text>
           <Text style={styles.modalSubtitle}>Current balance: {formatBalance(balance)} ALGO</Text>
+          {action === 'withdraw' ? (
+            <Text style={[styles.modalSubtitle, { marginTop: -8, opacity: 0.9 }]}>
+              Withdraw consumes the largest available note and sends the entire note minus network/proof fees.
+            </Text>
+          ) : null}
 
+          <View style={styles.segmentedRow}>
+            <Pressable
+              style={[
+                styles.segmentedButton,
+                action === 'spend' ? styles.segmentedButtonActive : styles.segmentedButtonInactive,
+              ]}
+              onPress={() => setAction('spend')}
+            >
+              <Text style={action === 'spend' ? styles.segmentedTextActive : styles.segmentedTextInactive}>Spend</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.segmentedButton,
+                action === 'withdraw' ? styles.segmentedButtonActive : styles.segmentedButtonInactive,
+                !hasUnspentUtxo ? { opacity: 0.5 } : null,
+              ]}
+              onPress={() => setAction('withdraw')}
+              disabled={!hasUnspentUtxo}
+            >
+              <Text style={action === 'withdraw' ? styles.segmentedTextActive : styles.segmentedTextInactive}>Withdraw</Text>
+            </Pressable>
+          </View>
+
+          {action === 'spend' ? (
+            <TextInput
+              style={styles.modalInput}
+              keyboardType="numeric"
+              placeholder="Amount (ALGO)"
+              placeholderTextColor="#C9B8FF"
+              value={amount}
+              onChangeText={setAmount}
+            />
+          ) : null}
           <TextInput
             style={styles.modalInput}
-            keyboardType="numeric"
-            placeholder="Amount (ALGO)"
-            placeholderTextColor="#C9B8FF"
-            value={amount}
-            onChangeText={setAmount}
-          />
-          <TextInput
-            style={styles.modalInput}
-            placeholder="Recipient shielded address (mith...)"
+            placeholder={action === 'spend' ? 'Recipient shielded address (mith...)' : 'Recipient Algorand address'}
             placeholderTextColor="#C9B8FF"
             value={toAddress}
             onChangeText={setToAddress}
@@ -478,7 +555,7 @@ export function ShieldedSendModal({
               <Text style={styles.modalButtonText}>Cancel</Text>
             </Pressable>
             <Pressable style={[styles.modalButton, styles.modalButtonPrimary]} onPress={handleConfirm}>
-              <Text style={styles.modalButtonText}>Send</Text>
+              <Text style={styles.modalButtonText}>{action === 'spend' ? 'Send' : 'Make Public'}</Text>
             </Pressable>
           </View>
         </View>
@@ -916,6 +993,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 12,
     gap: 8,
+  },
+  segmentedRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 6,
+    padding: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  segmentedButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  segmentedButtonActive: {
+    backgroundColor: 'rgba(201,184,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(201,184,255,0.35)',
+  },
+  segmentedButtonInactive: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  segmentedTextActive: {
+    color: '#EDE7FF',
+    fontWeight: '800',
+  },
+  segmentedTextInactive: {
+    color: '#C9B8FF',
+    fontWeight: '700',
   },
   modalButton: {
     flex: 1,

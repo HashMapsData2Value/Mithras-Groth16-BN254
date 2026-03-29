@@ -8,23 +8,26 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		42FB22E2D6E14FFEA43D611D /* verifier_artifacts.json in Resources */ = {isa = PBXBuildFile; fileRef = DC19714AF8A94599AD0C72F1 /* verifier_artifacts.json */; };
 		4D13492C2E7E4173AEE51609 /* deposit_test.zkey in Resources */ = {isa = PBXBuildFile; fileRef = 6795A3FEE9134593953966A7 /* deposit_test.zkey */; };
 		51182CC2B6944F58B414EDCB /* multiplier2_wc.cpp in Resources */ = {isa = PBXBuildFile; fileRef = B2CA0693DE6B446AB9AE2F3A /* multiplier2_wc.cpp */; };
 		6BCA2595705946CB81590550 /* multiplier2_wc_final.zkey in Resources */ = {isa = PBXBuildFile; fileRef = 4A835AADBB724A08935CFAFA /* multiplier2_wc_final.zkey */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		7A7604F8CB7C42619544AD9A /* multiplier2_wc.dat in Resources */ = {isa = PBXBuildFile; fileRef = 405E28D0564E459592B0B6A0 /* multiplier2_wc.dat */; };
+		7AEFA52197F844AEADA7D12E /* withdraw_test.zkey in Resources */ = {isa = PBXBuildFile; fileRef = 05B0220E2E67437798B25198 /* withdraw_test.zkey */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		9F3F52EE09C593B070C354DB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		9FFE8342D8CE41E58FBF2DC8 /* deposit.wasm in Resources */ = {isa = PBXBuildFile; fileRef = D0489ED624AB458CA52CF002 /* deposit.wasm */; };
-		B83981471DF74F878EF3F4B1 /* verifier_artifacts.json in Resources */ = {isa = PBXBuildFile; fileRef = 67328A88B87C465BB41FF0FB /* verifier_artifacts.json */; };
 		C63217E3342D450DB879C328 /* spend_test.zkey in Resources */ = {isa = PBXBuildFile; fileRef = BAADF468F6EB49DC98950503 /* spend_test.zkey */; };
 		CEF76C4C553B47E28E661841 /* spend.wasm in Resources */ = {isa = PBXBuildFile; fileRef = A3949645B80E4776A83F0449 /* spend.wasm */; };
 		D7011D28E17D45C2BE257368 /* multiplier2_final.zkey in Resources */ = {isa = PBXBuildFile; fileRef = 206F42B759ED439DA8FFF749 /* multiplier2_final.zkey */; };
 		DDA6561B29BF439E89815F3B /* multiplier2_bls_final.zkey in Resources */ = {isa = PBXBuildFile; fileRef = D89BF60F3B284EB584CE9C50 /* multiplier2_bls_final.zkey */; };
 		E469355E307CEBC094847D7D /* libPods-Mithras.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 224D975E20E30C40546F2BB6 /* libPods-Mithras.a */; };
+		F7C0085A60864B4EB9434D68 /* withdraw.wasm in Resources */ = {isa = PBXBuildFile; fileRef = 846996C2462544CF894818F1 /* withdraw.wasm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		05B0220E2E67437798B25198 /* withdraw_test.zkey */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = withdraw_test.zkey; path = ../assets/keys/withdraw_test.zkey; sourceTree = "<group>"; };
 		0B7971F55FDDAD44E92055C4 /* Pods-Mithras.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Mithras.debug.xcconfig"; path = "Target Support Files/Pods-Mithras/Pods-Mithras.debug.xcconfig"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Mithras.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mithras.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Mithras/Images.xcassets; sourceTree = "<group>"; };
@@ -36,15 +39,16 @@
 		405E28D0564E459592B0B6A0 /* multiplier2_wc.dat */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = multiplier2_wc.dat; path = ../assets/keys/multiplier2_wc.dat; sourceTree = "<group>"; };
 		4A835AADBB724A08935CFAFA /* multiplier2_wc_final.zkey */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = multiplier2_wc_final.zkey; path = ../assets/keys/multiplier2_wc_final.zkey; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-MyTestLibraryExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-MyTestLibraryExample.release.xcconfig"; path = "Target Support Files/Pods-MyTestLibraryExample/Pods-MyTestLibraryExample.release.xcconfig"; sourceTree = "<group>"; };
-		67328A88B87C465BB41FF0FB /* verifier_artifacts.json */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = verifier_artifacts.json; path = ../assets/keys/verifier_artifacts.json; sourceTree = "<group>"; };
 		6795A3FEE9134593953966A7 /* deposit_test.zkey */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = deposit_test.zkey; path = ../assets/keys/deposit_test.zkey; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Mithras/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Mithras/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		846996C2462544CF894818F1 /* withdraw.wasm */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = withdraw.wasm; path = ../assets/keys/withdraw.wasm; sourceTree = "<group>"; };
 		A3949645B80E4776A83F0449 /* spend.wasm */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = spend.wasm; path = ../assets/keys/spend.wasm; sourceTree = "<group>"; };
 		B2CA0693DE6B446AB9AE2F3A /* multiplier2_wc.cpp */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = multiplier2_wc.cpp; path = ../assets/keys/multiplier2_wc.cpp; sourceTree = "<group>"; };
 		BAADF468F6EB49DC98950503 /* spend_test.zkey */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = spend_test.zkey; path = ../assets/keys/spend_test.zkey; sourceTree = "<group>"; };
 		D0489ED624AB458CA52CF002 /* deposit.wasm */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = deposit.wasm; path = ../assets/keys/deposit.wasm; sourceTree = "<group>"; };
 		D89BF60F3B284EB584CE9C50 /* multiplier2_bls_final.zkey */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = multiplier2_bls_final.zkey; path = ../assets/keys/multiplier2_bls_final.zkey; sourceTree = "<group>"; };
+		DC19714AF8A94599AD0C72F1 /* verifier_artifacts.json */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = verifier_artifacts.json; path = ../assets/keys/verifier_artifacts.json; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F1E274D29F52F451CE810DA9 /* Pods-Mithras.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Mithras.release.xcconfig"; path = "Target Support Files/Pods-Mithras/Pods-Mithras.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -94,7 +98,9 @@
 				6795A3FEE9134593953966A7 /* deposit_test.zkey */,
 				A3949645B80E4776A83F0449 /* spend.wasm */,
 				D0489ED624AB458CA52CF002 /* deposit.wasm */,
-				67328A88B87C465BB41FF0FB /* verifier_artifacts.json */,
+				05B0220E2E67437798B25198 /* withdraw_test.zkey */,
+				846996C2462544CF894818F1 /* withdraw.wasm */,
+				DC19714AF8A94599AD0C72F1 /* verifier_artifacts.json */,
 			);
 			name = Resources;
 			sourceTree = "<group>";
@@ -212,7 +218,9 @@
 				4D13492C2E7E4173AEE51609 /* deposit_test.zkey in Resources */,
 				CEF76C4C553B47E28E661841 /* spend.wasm in Resources */,
 				9FFE8342D8CE41E58FBF2DC8 /* deposit.wasm in Resources */,
-				B83981471DF74F878EF3F4B1 /* verifier_artifacts.json in Resources */,
+				7AEFA52197F844AEADA7D12E /* withdraw_test.zkey in Resources */,
+				F7C0085A60864B4EB9434D68 /* withdraw.wasm in Resources */,
+				42FB22E2D6E14FFEA43D611D /* verifier_artifacts.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -311,6 +319,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Mithras/Mithras.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Mithras/Info.plist;
@@ -339,6 +348,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Mithras/Mithras.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = Mithras/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;

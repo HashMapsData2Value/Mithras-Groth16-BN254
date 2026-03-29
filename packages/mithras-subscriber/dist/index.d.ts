@@ -3,7 +3,7 @@ import algosdk from "algosdk";
 import { ViewKeypair, HpkeEnvelope, MimcMerkleTree, UtxoSecrets } from "mithras-crypto";
 export declare function equalBytes(a: Uint8Array, b: Uint8Array): boolean;
 export declare class MithrasMethod {
-    type: "deposit" | "spend";
+    type: "deposit" | "spend" | "withdraw";
     hpke_envelopes: HpkeEnvelope[];
     commitments: bigint[];
     nullifier?: bigint | undefined;

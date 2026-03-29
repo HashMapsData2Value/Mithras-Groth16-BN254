@@ -7,14 +7,22 @@ require('@bacons/text-decoder/install');
 const { Buffer } = require('@craftzdog/react-native-buffer');
 global.Buffer = global.Buffer || Buffer;
 
-import { AppRegistry } from 'react-native';
-
-import { name as appName } from './app.json';
-import { uniffiInitAsync } from 'mopro-ffi';
-
-// Require App after polyfills/shims are installed (ESM imports are hoisted).
+const { AppRegistry } = require('react-native');
+const { name: appName } = require('./app.json');
 const App = require('./src/App').default;
 
-uniffiInitAsync().then(() => {
-  AppRegistry.registerComponent(appName, () => App);
-});
+// In bridgeless/new-arch mode the runtime expects the component to be
+// registered synchronously during startup.
+AppRegistry.registerComponent(appName, () => App);
+
+// Initialize UniFFI bindings, but don't block app registration.
+try {
+  const { uniffiInitAsync } = require('mopro-ffi');
+  Promise.resolve(uniffiInitAsync()).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.warn('[mopro-ffi] uniffiInitAsync failed', e);
+  });
+} catch (e) {
+  // eslint-disable-next-line no-console
+  console.warn('[mopro-ffi] failed to require module', e);
+}

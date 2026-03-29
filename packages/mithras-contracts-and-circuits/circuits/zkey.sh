@@ -185,3 +185,9 @@ circom --r1cs --wasm --c --sym --inspect "$CIRCUITS_DIR/spend.circom" --prime bn
 check_ptau_fits_r1cs "$CIRCUITS_DIR/spend.r1cs" "$PTAU_PATH"
 # snarkjs plonk setup $CIRCUITS_DIR/spend.r1cs $PTAU_PATH $CIRCUITS_DIR/spend_test.zkey
 snarkjs groth16 setup $CIRCUITS_DIR/spend.r1cs $PTAU_PATH $CIRCUITS_DIR/spend_test.zkey
+
+# circom --r1cs --wasm --c --sym --inspect $CIRCUITS_DIR/withdraw.circom --prime bls12381
+circom --r1cs --wasm --c --sym --inspect "$CIRCUITS_DIR/withdraw.circom" --prime bn128
+check_ptau_fits_r1cs "$CIRCUITS_DIR/withdraw.r1cs" "$PTAU_PATH"
+# snarkjs plonk setup $CIRCUITS_DIR/withdraw.r1cs $PTAU_PATH $CIRCUITS_DIR/withdraw_test.zkey
+snarkjs groth16 setup $CIRCUITS_DIR/withdraw.r1cs $PTAU_PATH $CIRCUITS_DIR/withdraw_test.zkey

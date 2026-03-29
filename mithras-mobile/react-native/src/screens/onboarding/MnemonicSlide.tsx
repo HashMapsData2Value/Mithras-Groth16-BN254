@@ -87,7 +87,8 @@ export const MnemonicEntryTopLevel: React.FC<MnemonicEntryProps> = ({ onSaved, o
       }, 900);
     } catch (e) {
       console.warn('Secure storage save failed', e);
-      showAppAlert('Error', 'Failed to save mnemonic', undefined, null, null, null, 'error');
+      const details = __DEV__ ? `\n\n${String(e)}` : '';
+      showAppAlert('Error', `Failed to save mnemonic${details}`, undefined, null, null, null, 'error');
     }
   };
 

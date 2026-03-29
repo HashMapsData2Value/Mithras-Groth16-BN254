@@ -93,6 +93,10 @@ export function depositTxns(fromIndex: number, toIndex: number, amount: number) 
 const SPEND_LSIGS = 12n;
 const LSIGS_FEE = SPEND_LSIGS * 1000n;
 const SPEND_APP_FEE = 57n * 1000n;
+// Keep these aligned with packages/mithras-contracts-and-circuits/src/index.ts
+// (they are not exported, but must match protocol fee calibration).
+const WITHDRAW_LSIGS = 12n;
+const WITHDRAW_APP_FEE = 2000n;
 const NULLIFIER_MBR = 15_700n;
 
 const MERKLE_LEAVES_KEY = 'mithras:merkle:leaves';
@@ -823,6 +827,86 @@ async function syncMerkleUntilValidRoot(
   );
 }
 
+async function syncMerkleUntilLastComputedRoot(
+  protocol: MithrasProtocolClient,
+  options?: { maxAttempts?: number; baseDelayMs?: number; resetFirst?: boolean },
+): Promise<{ leaves: bigint[]; tree: MimcMerkleTree; root: bigint; epochId: bigint; expectedLeaves?: number; attempts: number; resetUsed: boolean; rootStatus: Awaited<ReturnType<typeof isRootValidOnChain>> }> {
+  const maxAttempts = Math.max(1, Math.min(12, Number(options?.maxAttempts ?? 9)));
+  const baseDelayMs = Math.max(0, Math.min(5_000, Number(options?.baseDelayMs ?? 500)));
+
+  let resetUsed = false;
+  let resetNext = Boolean(options?.resetFirst);
+
+  type SyncedMerkle = NonNullable<Awaited<ReturnType<typeof syncMerkleLeaves>>>;
+  let lastMerkle: SyncedMerkle | null = null;
+  let lastStatus: Awaited<ReturnType<typeof isRootValidOnChain>> | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (resetNext) resetUsed = true;
+
+    const merkle = await syncMerkleLeaves({ reset: resetNext });
+    resetNext = false;
+
+    if (!merkle) {
+      throw new Error('Failed to sync Merkle tree from Indexer');
+    }
+
+    const status = await isRootValidOnChain(protocol, merkle.root);
+    lastMerkle = merkle;
+    lastStatus = status;
+
+    if (status.valid && status.matchesLast) {
+      return { ...merkle, attempts: attempt, resetUsed, rootStatus: status };
+    }
+
+    const expected = merkle.expectedLeaves;
+    if (typeof expected === 'number') {
+      if (merkle.leaves.length < expected) {
+        // Indexer behind; retry with backoff.
+      } else if (merkle.leaves.length === expected) {
+        // We have a full leaf set; if root still doesn't match lastComputedRoot, rebuild once.
+        if (!resetUsed) {
+          resetNext = true;
+          continue;
+        }
+      } else {
+        // More leaves than expected for epoch — rebuild once.
+        if (!resetUsed) {
+          resetNext = true;
+          continue;
+        }
+      }
+    } else {
+      // Without expectedLeaves, a mismatch is ambiguous; try a full rebuild once.
+      if (!resetUsed) {
+        resetNext = true;
+        continue;
+      }
+    }
+
+    if (baseDelayMs > 0 && attempt < maxAttempts) {
+      await sleepMs(baseDelayMs * attempt);
+    }
+  }
+
+  const lastRoot = lastMerkle?.root ?? 0n;
+  const leaves = lastMerkle?.leaves.length ?? 0;
+  const expectedLeaves = lastMerkle?.expectedLeaves;
+  const epochId = lastMerkle?.epochId;
+  const inCache = lastStatus?.inCache;
+  const matchesLast = lastStatus?.matchesLast;
+  const lastComputed = lastStatus?.lastComputedRoot;
+
+  throw new Error(
+    `Merkle root does not match contract's lastComputedRoot (after ${maxAttempts} attempts). ` +
+    `localRoot=${lastRoot} leaves=${leaves}` +
+    (typeof expectedLeaves === 'number' ? ` expectedLeaves=${expectedLeaves}` : '') +
+    (typeof epochId === 'bigint' ? ` epochId=${epochId}` : '') +
+    ' ' +
+    `(inCache=${String(inCache)}, matchesLast=${String(matchesLast)}, lastComputedRoot=${String(lastComputed)}).`,
+  );
+}
+
 export async function refreshMerkleRoot(options?: { maxAttempts?: number; baseDelayMs?: number; reset?: boolean }): Promise<{
   validOnChain: boolean;
   inCache?: boolean;
@@ -896,6 +980,15 @@ function modN(x: bigint): bigint {
 
 async function moproSpendProver(circomInputs: Record<string, string | string[]>): Promise<CircomProofResult> {
   const filePath = await loadAssets('spend_test.zkey', { force: false });
+  const zkeyPath = filePath.replace('file://', '');
+  const res = await Promise.resolve(
+    generateCircomProof(zkeyPath, JSON.stringify(circomInputs), ProofLib.Arkworks),
+  );
+  return res as unknown as CircomProofResult;
+}
+
+async function moproWithdrawProver(circomInputs: Record<string, string | string[]>): Promise<CircomProofResult> {
+  const filePath = await loadAssets('withdraw_test.zkey', { force: false });
   const zkeyPath = filePath.replace('file://', '');
   const res = await Promise.resolve(
     generateCircomProof(zkeyPath, JSON.stringify(circomInputs), ProofLib.Arkworks),
@@ -1287,11 +1380,272 @@ export async function spendFromShieldedPool(args: {
   return sendRes;
 }
 
+export async function withdrawFromShieldedPool(args: {
+  fromShieldedIndex: number;
+  toPublicAddress: string;
+}): Promise<{ txIds: string[]; confirmedRound?: number } | any> {
+  const { fromShieldedIndex, toPublicAddress } = args;
+  const algorandClient = await getAlgorandClient();
+  const protocol = await getMithrasProtocolClient(algorandClient);
+
+  const receiverStr = String(toPublicAddress ?? '').trim();
+  if (!algosdk.isValidAddress(receiverStr)) {
+    throw new Error('Invalid recipient Algorand address');
+  }
+
+  const candidates = getUnspentUtxoRecords()
+    .filter((r) => r.receiverShieldedIndex === fromShieldedIndex)
+    .map((r) => {
+      let amt = 0n;
+      try {
+        amt = BigInt(r.amount);
+      } catch {
+        amt = 0n;
+      }
+      return { r, amt };
+    })
+    .filter((x) => x.amt > 0n)
+    .sort((a, b) => (a.amt > b.amt ? -1 : a.amt < b.amt ? 1 : 0));
+
+  if (candidates.length === 0) {
+    throw new Error('No spendable UTXOs found for this shielded address');
+  }
+
+  const withdrawExtraFee = WITHDRAW_APP_FEE + WITHDRAW_LSIGS * 1000n + 2000n;
+  const fee = NULLIFIER_MBR + (1000n + withdrawExtraFee);
+
+  let selected: { id: string; utxo: UtxoSecrets; record: any } | null = null;
+  for (const c of candidates) {
+    const secretsBytes = await getUtxoSecretsBytes(c.r.id);
+    if (!secretsBytes) continue;
+    let utxo: UtxoSecrets;
+    try {
+      utxo = UtxoSecrets.fromBytes(secretsBytes);
+    } catch {
+      continue;
+    }
+
+    // Withdraw must exhaust a single note. Ensure it can at least pay the fee and leave >0 output.
+    if (utxo.amount > fee) {
+      selected = { id: c.r.id, utxo, record: c.r };
+      break;
+    }
+  }
+  if (!selected) {
+    throw new Error(`No UTXO large enough to withdraw after fees (need utxo.amount > ${fee})`);
+  }
+
+  // Withdraw requires the Merkle proof root to match contract's lastComputedRoot.
+  let merkle = await syncMerkleUntilLastComputedRoot(protocol, { maxAttempts: 10, baseDelayMs: 600 });
+
+  const utxoSecrets = selected.utxo;
+  const utxoCommitment = utxoSecrets.computeCommitment();
+
+  let leafIndex = merkle.leaves.findIndex((x) => x === utxoCommitment);
+  if (leafIndex < 0) {
+    merkle = await syncMerkleUntilLastComputedRoot(protocol, { maxAttempts: 10, baseDelayMs: 600, resetFirst: true });
+    leafIndex = merkle.leaves.findIndex((x) => x === utxoCommitment);
+  }
+  if (leafIndex < 0) {
+    throw new Error(
+      `Input UTXO commitment not found in reconstructed Merkle tree (leaves=${merkle.leaves.length}). ` +
+      `Run Refresh/Scan, then try again.`,
+    );
+  }
+
+  const merkleProof: MerkleProof = merkle.tree.getMerkleProof(leafIndex);
+
+  const spendSeed = await derivePrivateNodeKeyMaterial(fromShieldedIndex, 1);
+  const spendPubkey = await getShieldedSpendPublicKey(fromShieldedIndex);
+
+  const expectedStealthPubkey = deriveStealthPubkey(spendPubkey, utxoSecrets.stealthScalar);
+  if (!equalBytes(expectedStealthPubkey, utxoSecrets.stealthPubkey)) {
+    throw new Error('Selected UTXO does not belong to the provided shielded address');
+  }
+
+  // Derive stealth signer (Ed25519 expanded secret) from spend seed + stealth scalar.
+  const spendAScalar = spendKeyAScalarFromSeed(spendSeed);
+  const spendPrefix = spendKeyPrefixFromSeed(spendSeed);
+  const stealthScalar = modN(spendAScalar + utxoSecrets.stealthScalar);
+  const stealthAScalarBytes = numberToBytesLE(stealthScalar, 32);
+  const stealthPrefix = sha512(concatBytes(stealthAScalarBytes, spendPrefix)).slice(32, 64);
+  const stealthPublicKey = utxoSecrets.stealthPubkey;
+
+  const addr = new algosdk.Address(stealthPublicKey);
+  const signer: algosdk.TransactionSigner = async (txns: algosdk.Transaction[], indexesToSign: number[]) => {
+    const signedTxns: Uint8Array[] = [];
+    for (const i of indexesToSign) {
+      const txn = txns[i];
+      const msg = txn.bytesToSign();
+      const sig = rawEd25519SignExpanded({
+        aScalar: stealthAScalarBytes,
+        prefix: stealthPrefix,
+        publicKey: stealthPublicKey,
+        msg,
+      });
+
+      try {
+        const ok = ed25519.verify(sig, msg, stealthPublicKey);
+        if (!ok) {
+          throw new Error('Generated signature does not verify against derived stealth public key');
+        }
+      } catch (e) {
+        throw new Error(`Stealth signer produced invalid Ed25519 signature (txnIndex=${i}, type=${txn.type}): ${String(e)}`);
+      }
+
+      const stxn = new algosdk.SignedTransaction({ txn, sig });
+      signedTxns.push(algosdk.encodeMsgpack(stxn));
+    }
+    return signedTxns;
+  };
+
+  const senderSigner = { sender: addr, signer };
+  algorandClient.account.setSigner(algosdk.encodeAddress(stealthPublicKey), signer);
+
+  const withdrawReceiver = algosdk.decodeAddress(receiverStr);
+  const withdrawAmount = utxoSecrets.amount - fee;
+  if (withdrawAmount <= 0n) {
+    throw new Error('Withdraw amount must be > 0 after fees');
+  }
+
+  const inputSignals: Record<string, bigint | bigint[]> = {
+    withdraw_amount: withdrawAmount,
+    fee,
+    utxo_spender: addressInScalarField(utxoSecrets.stealthPubkey),
+    withdraw_receiver: addressInScalarField(withdrawReceiver.publicKey),
+    utxo_spending_secret: utxoSecrets.spendingSecret,
+    utxo_nullifier_secret: utxoSecrets.nullifierSecret,
+    utxo_amount: utxoSecrets.amount,
+    path_selectors: merkleProof.pathSelectors.map((b) => BigInt(b)),
+    utxo_path: merkleProof.pathElements,
+  };
+
+  const circomInputs: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(inputSignals)) {
+    if (Array.isArray(v)) {
+      circomInputs[k] = v.map((x) => x.toString());
+    } else {
+      circomInputs[k] = v.toString();
+    }
+  }
+
+  const proofRes = await moproWithdrawProver(circomInputs);
+  const { proof, signals } = circomProofResultToVerificationArgs(proofRes);
+
+  const withdrawGroup = protocol.appClient.newGroup();
+
+  // Fee pooling:
+  // - The stealth sender typically has 0 balance before the app call.
+  // - If we set a non-zero fee on the app call, algod simulation can fail with "overspend".
+  // - The contract funds the sender via an inner txn during the app call, so the *next*
+  //   transaction can pay the group's fees and close the account back to the app.
+  const feePayment = await protocol.algorand.createTransaction.payment({
+    ...senderSigner,
+    receiver: addr,
+    amount: microAlgos(0),
+    // Pay for the whole group here (after the sender is funded by the app call).
+    extraFee: microAlgos(withdrawExtraFee),
+    closeRemainderTo: protocol.appClient.appAddress,
+  });
+
+  await protocol.withdrawVerifier.verificationParams({
+    composer: withdrawGroup,
+    proof,
+    signals,
+    paramsCallback: async (params) => {
+      const { lsigParams, args } = params;
+
+      const verifierPayTxn = await protocol.algorand.createTransaction.payment({
+        ...lsigParams,
+        receiver: lsigParams.sender,
+        amount: microAlgos(0),
+      });
+      const verifierSigner = (lsigParams.sender as any)?.signer;
+      const verifierTxn = verifierSigner
+        ? ({ txn: verifierPayTxn, signer: verifierSigner } as any)
+        : (verifierPayTxn as any);
+
+      withdrawGroup.withdraw({
+        ...senderSigner,
+        args: {
+          verifierTxn,
+          signals: args.signals,
+          _proof: args.proof,
+          withdrawReceiver: receiverStr,
+        },
+        staticFee: microAlgos(0),
+      });
+
+      withdrawGroup.addTransaction(feePayment);
+    },
+  });
+
+  const composer = await withdrawGroup.composer();
+
+  let builtDiagnostics: { transactions: any[]; signers?: Map<number, any> } | null = null;
+  try {
+    const built = await (composer as any).buildTransactions?.();
+    if (built && Array.isArray(built.transactions)) {
+      builtDiagnostics = {
+        transactions: built.transactions,
+        signers: built.signers instanceof Map ? built.signers : undefined,
+      };
+    }
+  } catch {
+    // ignore; diagnostics only
+  }
+
+  const dumpBuiltDiagnostics = (label: string) => {
+    if (!builtDiagnostics) {
+      console.warn(`[withdraw] ${label}: no pre-send diagnostics snapshot available`);
+      return;
+    }
+
+    const txns = builtDiagnostics.transactions;
+    const signers: Map<number, any> = builtDiagnostics.signers instanceof Map ? builtDiagnostics.signers : new Map();
+    console.warn(`[withdraw] ${label}: txns=${txns.length}, signers=${signers.size}`);
+
+    for (let i = 0; i < txns.length; i++) {
+      const t: any = txns[i];
+      const sender = typeof t?.from === 'string' ? t.from : t?.from?.toString?.() ?? '(unknown)';
+      const type = t?.type ?? '(unknown)';
+      const hasSigner = signers.has(i);
+      console.warn(`[withdraw] txn[${i}] type=${type} sender=${sender} hasSigner=${hasSigner}`);
+    }
+  };
+
+  let sendRes: any;
+  try {
+    sendRes = await (composer as any).send();
+  } catch (e) {
+    dumpBuiltDiagnostics('send failed');
+    throw e;
+  }
+
+  try {
+    const confirmedRound = Array.isArray(sendRes?.confirmations)
+      ? (sendRes.confirmations as any[]).reduce((max: number, c: any) => {
+        const r = c?.['confirmed-round'];
+        return typeof r === 'number' ? Math.max(max, r) : max;
+      }, 0) || undefined
+      : undefined;
+    const txIds = Array.isArray(sendRes?.txIds) ? sendRes.txIds : undefined;
+    const spentTxId = Array.isArray(txIds) && txIds.length ? txIds[0] : undefined;
+    markUtxoSpent(selected.id, { spentRound: confirmedRound, spentTxId });
+  } catch (e) {
+    console.warn('Failed to persist withdraw UTXO metadata', e);
+  }
+
+  return sendRes;
+}
+
 type VerifierArtifacts = {
   depositVerifierAddr: string;
   depositVerifierProgram: Uint8Array;
   spendVerifierAddr: string;
   spendVerifierProgram: Uint8Array;
+  withdrawVerifierAddr: string;
+  withdrawVerifierProgram: Uint8Array;
 };
 
 let verifierArtifactsCache: VerifierArtifacts | null = null;
@@ -1307,6 +1661,8 @@ async function getVerifierArtifacts(): Promise<VerifierArtifacts> {
     depositVerifierProgramB64: string;
     spendVerifierAddr: string;
     spendVerifierProgramB64: string;
+    withdrawVerifierAddr: string;
+    withdrawVerifierProgramB64: string;
   };
 
   // Prefer Metro-bundled JSON (no iOS asset linking/copying required).
@@ -1324,11 +1680,15 @@ async function getVerifierArtifacts(): Promise<VerifierArtifacts> {
   verifierArtifactsCache = {
     depositVerifierAddr: artifacts.depositVerifierAddr,
     spendVerifierAddr: artifacts.spendVerifierAddr,
+    withdrawVerifierAddr: artifacts.withdrawVerifierAddr,
     depositVerifierProgram: new Uint8Array(
       Buffer.from(artifacts.depositVerifierProgramB64, 'base64'),
     ),
     spendVerifierProgram: new Uint8Array(
       Buffer.from(artifacts.spendVerifierProgramB64, 'base64'),
+    ),
+    withdrawVerifierProgram: new Uint8Array(
+      Buffer.from(artifacts.withdrawVerifierProgramB64, 'base64'),
     ),
   };
 
@@ -1358,8 +1718,10 @@ async function getMithrasProtocolClient(algorandClient: any): Promise<MithrasPro
   return new MithrasProtocolClient(algorandClient, BigInt(mithrasAppId), {
     depositVerifierAddr: artifacts.depositVerifierAddr,
     spendVerifierAddr: artifacts.spendVerifierAddr,
+    withdrawVerifierAddr: artifacts.withdrawVerifierAddr,
     depositVerifierProgram: artifacts.depositVerifierProgram,
     spendVerifierProgram: artifacts.spendVerifierProgram,
+    withdrawVerifierProgram: artifacts.withdrawVerifierProgram,
     onMobile: true,
   });
 }

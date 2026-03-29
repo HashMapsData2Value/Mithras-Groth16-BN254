@@ -144,6 +144,8 @@ export async function deployMithrasAppLocalnet(): Promise<bigint> {
       depositVerifierProgramB64: string;
       spendVerifierAddr: string;
       spendVerifierProgramB64: string;
+      withdrawVerifierAddr: string;
+      withdrawVerifierProgramB64: string;
     };
 
     try {
@@ -162,11 +164,15 @@ export async function deployMithrasAppLocalnet(): Promise<bigint> {
     const opts = {
       depositVerifierAddr: artifacts.depositVerifierAddr,
       spendVerifierAddr: artifacts.spendVerifierAddr,
+      withdrawVerifierAddr: artifacts.withdrawVerifierAddr,
       depositVerifierProgram: new Uint8Array(
         Buffer.from(artifacts.depositVerifierProgramB64, 'base64'),
       ),
       spendVerifierProgram: new Uint8Array(
         Buffer.from(artifacts.spendVerifierProgramB64, 'base64'),
+      ),
+      withdrawVerifierProgram: new Uint8Array(
+        Buffer.from(artifacts.withdrawVerifierProgramB64, 'base64'),
       ),
       onMobile: true,
     };
@@ -208,9 +214,11 @@ export async function deployMithrasAppLocalnet(): Promise<bigint> {
 
       const depositVerifier = await deployment.appClient.state.global.depositVerifier();
       const spendVerifier = await deployment.appClient.state.global.spendVerifier();
+      const withdrawVerifier = await deployment.appClient.state.global.withdrawVerifier();
       console.log('mithras global state verifiers:', {
         depositVerifier,
         spendVerifier,
+        withdrawVerifier,
       });
     } catch (e) {
       console.warn('Failed to fetch app info after deploy (non-fatal):', e);

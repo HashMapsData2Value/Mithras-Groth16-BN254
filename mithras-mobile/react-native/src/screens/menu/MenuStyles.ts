@@ -12,7 +12,10 @@ export const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: -1,
+    // Android can fail to render negative zIndex layers; keep this non-negative
+    // and rely on render order (bg layers are mounted before content) plus
+    // pointerEvents="none" on the layer views.
+    zIndex: 0,
   },
   sun: {
     position: 'absolute',
@@ -38,7 +41,7 @@ export const styles = StyleSheet.create({
     position: 'absolute',
     backgroundColor: 'rgba(255,255,255,0.9)',
     opacity: 0.9,
-    zIndex: -2,
+    zIndex: 0,
   },
   cloud1: {
     width: 140,

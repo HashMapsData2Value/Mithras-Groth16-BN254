@@ -49,14 +49,6 @@ export const NetworkConfig: React.FC<NetworkConfigProps> = ({ showAppAlert, onCo
     );
   };
 
-  // Inform parent about layout mode so it can center or push title up
-  React.useEffect(() => {
-    try {
-      if (typeof (arguments[0] as any) === 'undefined') { }
-    } catch (_) { }
-  }, []);
-
-
   const onContinue = async () => {
     try {
       setIsValidating(true);

@@ -6,28 +6,8 @@
       "sha1": "fe3dd23a61f056e4c27974e5cbb95b2671c0c036"
     },
     {
-      "path": "assets/keys/spend.wasm",
-      "sha1": "8d85bf9d1b17343e570d82f1532e85610204881a"
-    },
-    {
       "path": "assets/keys/deposit.wasm",
       "sha1": "f293a0f7dd011713db2e51e8f4dd4e6ceaf8f2aa"
-    },
-    {
-      "path": "assets/keys/verifier_artifacts.json",
-      "sha1": "feff82028163a2183a7d9efdc66a54043482b4ce"
-    },
-    {
-      "path": "assets/keys/spend_test.zkey",
-      "sha1": "a6d924aa9bebfae135d2fa045c684ac95f3c857f"
-    },
-    {
-      "path": "assets/keys/multiplier2_wc.cpp",
-      "sha1": "83dff817b5555f48cf9a0635008410e2b87efaeb"
-    },
-    {
-      "path": "assets/keys/multiplier2_wc.dat",
-      "sha1": "86ce8d7252ab7c056d626053d7c607a008f9289d"
     },
     {
       "path": "assets/keys/multiplier2_bls_final.zkey",
@@ -40,6 +20,34 @@
     {
       "path": "assets/keys/multiplier2_wc_final.zkey",
       "sha1": "63bdbf3c24b9f108a09ceef52dd2fca0069d01b2"
+    },
+    {
+      "path": "assets/keys/multiplier2_wc.cpp",
+      "sha1": "83dff817b5555f48cf9a0635008410e2b87efaeb"
+    },
+    {
+      "path": "assets/keys/multiplier2_wc.dat",
+      "sha1": "86ce8d7252ab7c056d626053d7c607a008f9289d"
+    },
+    {
+      "path": "assets/keys/spend_test.zkey",
+      "sha1": "a6d924aa9bebfae135d2fa045c684ac95f3c857f"
+    },
+    {
+      "path": "assets/keys/spend.wasm",
+      "sha1": "8d85bf9d1b17343e570d82f1532e85610204881a"
+    },
+    {
+      "path": "assets/keys/verifier_artifacts.json",
+      "sha1": "be5e9bed48e8d152b08b89ffc5f3eb87039effa4"
+    },
+    {
+      "path": "assets/keys/withdraw_test.zkey",
+      "sha1": "afcbdd57bfd5589d2d8c8e4733f393b412070de3"
+    },
+    {
+      "path": "assets/keys/withdraw.wasm",
+      "sha1": "2157897737d01e179215778f922583e9358e82b1"
     }
   ]
 }

@@ -7,11 +7,12 @@ import { HomeMenuScreen } from './screens/HomeMenuScreen';
 import { DepositProofScreen } from './screens/proofs/DepositProofScreen';
 import { MultiplierProofScreen } from './screens/proofs/MultiplierProofScreen';
 import { SpendProofScreen } from './screens/proofs/SpendProofScreen';
+import { WithdrawProofScreen } from './screens/proofs/WithdrawProofScreen';
 import { hasMnemonic } from './services/secureStorage';
 import { ConnectivityProvider } from './context/Connectivity';
 import { hasNetwork } from './blockchain/network';
 
-type Route = 'menu' | 'deposit' | 'spend' | 'multiplier';
+type Route = 'menu' | 'deposit' | 'spend' | 'withdraw' | 'multiplier';
 
 export default function App() {
   const [route, setRoute] = useState<Route>('menu');
@@ -56,10 +57,13 @@ export default function App() {
               <HomeMenuScreen
                 onDeposit={() => setRoute('deposit')}
                 onSpend={() => setRoute('spend')}
+                onWithdraw={() => setRoute('withdraw')}
                 onMultiplier={() => setRoute('multiplier')}
               />
             ) : route === 'deposit' ? (
               <DepositProofScreen onBack={() => setRoute('menu')} />
+            ) : route === 'withdraw' ? (
+              <WithdrawProofScreen onBack={() => setRoute('menu')} />
             ) : route === 'multiplier' ? (
               <MultiplierProofScreen onBack={() => setRoute('menu')} />
             ) : (

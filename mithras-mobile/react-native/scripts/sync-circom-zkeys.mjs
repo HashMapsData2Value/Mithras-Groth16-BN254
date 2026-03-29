@@ -24,8 +24,10 @@ const androidCustomAssetsDir = path.join(projectRoot, 'android', 'app', 'src', '
 const filesToSync = [
   'deposit_test.zkey',
   'spend_test.zkey',
+  'withdraw_test.zkey',
   'deposit.wasm',
   'spend.wasm',
+  'withdraw.wasm',
 ];
 
 if (!fs.existsSync(circuitsDir)) {
@@ -85,5 +87,5 @@ for (const fileName of filesToSync) {
 
 console.log(
   `Synced Circom artifacts into assets/keys (copied=${copied}, skipped=${skipped}); ` +
-    `and android/app/src/main/assets/custom (copied=${androidCopied}, skipped=${androidSkipped})`
+  `and android/app/src/main/assets/custom (copied=${androidCopied}, skipped=${androidSkipped})`
 );

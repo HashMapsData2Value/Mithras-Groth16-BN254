@@ -16,6 +16,7 @@ import {
   BoxMap,
   itxn,
   emit,
+  TransactionType,
 } from "@algorandfoundation/algorand-typescript";
 import { MimcMerkle } from "./mimc_merkle.algo";
 import { Address, Uint256 } from "@algorandfoundation/algorand-typescript/arc4";
@@ -91,13 +92,15 @@ type NewLeaf = {
 export class Mithras extends MimcMerkle {
   depositVerifier = GlobalState<Address>({ key: "d" });
   spendVerifier = GlobalState<Address>({ key: "s" });
+  withdrawVerifier = GlobalState<Address>({ key: "w" });
   creationRound = GlobalState<uint64>({ key: "cr" });
 
   nullifiers = BoxMap<Uint256, bytes<0>>({ keyPrefix: "n" });
 
-  createApplication(depositVerifier: Address, spendVerifier: Address) {
+  createApplication(depositVerifier: Address, spendVerifier: Address, withdrawVerifier: Address) {
     this.depositVerifier.value = depositVerifier;
     this.spendVerifier.value = spendVerifier;
+    this.withdrawVerifier.value = withdrawVerifier;
     this.creationRound.value = Global.round;
   }
 
@@ -168,7 +171,10 @@ export class Mithras extends MimcMerkle {
 
     const nullifierMbr: uint64 = postMBR - preMBR;
 
-    assert(fee >= nullifierMbr, "Fee does not cover nullifier storage cost");
+    assert(
+      fee >= nullifierMbr + Global.minTxnFee,
+      "Fee does not cover nullifier storage + inner transaction fee",
+    );
 
     const closeIndex: uint64 = Txn.groupIndex + 1;
     assert(
@@ -176,12 +182,29 @@ export class Mithras extends MimcMerkle {
       GTxn.closeRemainderTo(closeIndex) === Global.currentApplicationAddress,
       "The transaction after the spend call must be a close transaction from the sender to the app address",
     );
+    assert(
+      GTxn.typeEnum(closeIndex) === TransactionType.Payment,
+      "The close transaction after spend must be a payment transaction",
+    );
+    assert(
+      GTxn.receiver(closeIndex) === Txn.sender,
+      "The close transaction after spend must be a self-payment",
+    );
+    assert(
+      GTxn.amount(closeIndex) === 0,
+      "The close transaction after spend must have amount=0",
+    );
+    assert(
+      GTxn.rekeyTo(closeIndex) === Global.zeroAddress,
+      "The close transaction after spend must not rekey",
+    );
 
     // Send the fee to the sender so they can cover it later in the group. The assumption is that the sender is a 0 ALGO account
     itxn
       .payment({
         receiver: Txn.sender,
         amount: Global.minBalance + fee - nullifierMbr,
+        fee: Global.minTxnFee,
       })
       .submit();
 
@@ -195,6 +218,92 @@ export class Mithras extends MimcMerkle {
 
     this.addCommitment(out0Commitment);
     this.addCommitment(out1Commitment);
+  }
+
+  withdraw(
+    signals: Uint256[],
+    _proof: Groth16Bn254Proof,
+    withdrawReceiver: Address,
+    verifierTxn: gtxn.Transaction,
+  ) {
+    assert(
+      verifierTxn.sender === this.withdrawVerifier.value.native,
+      "sender of verifier call must be the withdraw verifier lsig",
+    );
+
+    const utxoRoot = getSignal(signals, 0);
+    const nullifier = getSignal(signals, 1);
+    // signals[2] = withdraw_tag (currently unused on-chain)
+    const withdrawAmount = op.extractUint64(getSignal(signals, 3).bytes, 24);
+    const fee = op.extractUint64(getSignal(signals, 4).bytes, 24);
+    const spender = getSignal(signals, 5);
+    const withdrawReceiverScalar = getSignal(signals, 6);
+
+    assert(this.isValidRoot(utxoRoot), "Invalid UTXO root");
+
+    assert(!this.nullifiers(nullifier).exists, "Nullifier already exists");
+
+    const preMBR = Global.currentApplicationAddress.minBalance;
+    this.nullifiers(nullifier).create();
+    const postMBR = Global.currentApplicationAddress.minBalance;
+
+    const nullifierMbr: uint64 = postMBR - preMBR;
+    assert(
+      fee >= nullifierMbr + 2 * Global.minTxnFee,
+      "Fee does not cover nullifier storage + inner transaction fees",
+    );
+
+    // Fund the sender (typically a 0-ALGO stealth account) so it can cover group fees,
+    // then require a close transaction to return the remainder to the app.
+    const closeIndex: uint64 = Txn.groupIndex + 1;
+    assert(
+      GTxn.sender(closeIndex) === Txn.sender &&
+      GTxn.closeRemainderTo(closeIndex) === Global.currentApplicationAddress,
+      "The transaction after the withdraw call must be a close transaction from the sender to the app address",
+    );
+    assert(
+      GTxn.typeEnum(closeIndex) === TransactionType.Payment,
+      "The close transaction after withdraw must be a payment transaction",
+    );
+    assert(
+      GTxn.receiver(closeIndex) === Txn.sender,
+      "The close transaction after withdraw must be a self-payment",
+    );
+    assert(
+      GTxn.amount(closeIndex) === 0,
+      "The close transaction after withdraw must have amount=0",
+    );
+    assert(
+      GTxn.rekeyTo(closeIndex) === Global.zeroAddress,
+      "The close transaction after withdraw must not rekey",
+    );
+
+    itxn
+      .payment({
+        receiver: Txn.sender,
+        amount: Global.minBalance + fee - nullifierMbr,
+        fee: Global.minTxnFee,
+      })
+      .submit();
+
+    const senderInScalarField: biguint =
+      BigUint(Txn.sender.bytes) % BN254_SCALAR_MODULUS;
+    assert(BigUint(spender.bytes) === senderInScalarField, "Invalid spender");
+
+    const receiverInScalarField: biguint =
+      BigUint(withdrawReceiver.native.bytes) % BN254_SCALAR_MODULUS;
+    assert(
+      BigUint(withdrawReceiverScalar.bytes) === receiverInScalarField,
+      "Invalid withdraw receiver",
+    );
+
+    itxn
+      .payment({
+        receiver: withdrawReceiver.native,
+        amount: withdrawAmount,
+        fee: Global.minTxnFee,
+      })
+      .submit();
   }
 
   ensureBudget(budget: uint64) {

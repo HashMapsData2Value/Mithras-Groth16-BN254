@@ -28,6 +28,7 @@ pub mod witness {
     rust_witness::witness!(multiplier2bls);
     rust_witness::witness!(deposit);
     rust_witness::witness!(spend);
+    rust_witness::witness!(withdraw);
 }
 
 crate::set_circom_circuits! {
@@ -35,6 +36,7 @@ crate::set_circom_circuits! {
     ("multiplier2_bls_final.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::multiplier2bls_witness)),
     ("deposit_test.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::deposit_witness)),
     ("spend_test.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::spend_witness)),
+    ("withdraw_test.zkey", circom_prover::witness::WitnessFn::RustWitness(witness::withdraw_witness)),
 }
 
 mod circom;

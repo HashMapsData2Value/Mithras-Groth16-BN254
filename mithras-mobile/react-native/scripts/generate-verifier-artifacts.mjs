@@ -25,11 +25,15 @@ async function main() {
   const depositWasm = path.join(assetsKeysDir, 'deposit.wasm');
   const spendZKey = path.join(assetsKeysDir, 'spend_test.zkey');
   const spendWasm = path.join(assetsKeysDir, 'spend.wasm');
+  const withdrawZKey = path.join(assetsKeysDir, 'withdraw_test.zkey');
+  const withdrawWasm = path.join(assetsKeysDir, 'withdraw.wasm');
 
   requireFile(depositZKey);
   requireFile(depositWasm);
   requireFile(spendZKey);
   requireFile(spendWasm);
+  requireFile(withdrawZKey);
+  requireFile(withdrawWasm);
 
   const algorand = AlgorandClient.defaultLocalNet();
 
@@ -49,20 +53,40 @@ async function main() {
     appOffset: 1,
   });
 
+  // Keep in sync with mithras-contracts-and-circuits/src/index.ts
+  const withdrawVerifier = new Groth16Bn254LsigVerifier({
+    algorand,
+    zKey: withdrawZKey,
+    wasmProver: withdrawWasm,
+    totalLsigs: 12,
+    appOffset: 1,
+  });
+
   const depositLsig = await depositVerifier.lsigAccount();
   const spendLsig = await spendVerifier.lsigAccount();
+  const withdrawLsig = await withdrawVerifier.lsigAccount();
 
   const depositProgram = depositLsig?.account?.lsig?.logic;
   const spendProgram = spendLsig?.account?.lsig?.logic;
+  const withdrawProgram = withdrawLsig?.account?.lsig?.logic;
 
-  if (!(depositProgram instanceof Uint8Array) || !(spendProgram instanceof Uint8Array)) {
+  if (
+    !(depositProgram instanceof Uint8Array) ||
+    !(spendProgram instanceof Uint8Array) ||
+    !(withdrawProgram instanceof Uint8Array)
+  ) {
     throw new Error('Failed to extract LogicSig program bytes from lsigAccount()');
   }
 
   const depositAddr = depositLsig?.addr?.toString?.() ?? depositLsig?.toString?.();
   const spendAddr = spendLsig?.addr?.toString?.() ?? spendLsig?.toString?.();
+  const withdrawAddr = withdrawLsig?.addr?.toString?.() ?? withdrawLsig?.toString?.();
 
-  if (typeof depositAddr !== 'string' || typeof spendAddr !== 'string') {
+  if (
+    typeof depositAddr !== 'string' ||
+    typeof spendAddr !== 'string' ||
+    typeof withdrawAddr !== 'string'
+  ) {
     throw new Error('Failed to extract LogicSig addresses from lsigAccount()');
   }
 
@@ -71,9 +95,11 @@ async function main() {
     depositVerifierProgramB64: Buffer.from(depositProgram).toString('base64'),
     spendVerifierAddr: spendAddr,
     spendVerifierProgramB64: Buffer.from(spendProgram).toString('base64'),
+    withdrawVerifierAddr: withdrawAddr,
+    withdrawVerifierProgramB64: Buffer.from(withdrawProgram).toString('base64'),
     meta: {
       curve: 'bn254',
-      totalLsigs: { deposit: 7, spend: 12 },
+      totalLsigs: { deposit: 7, spend: 12, withdraw: 12 },
       appOffset: 1,
       generatedAt: new Date().toISOString(),
     },
@@ -88,6 +114,8 @@ async function main() {
   console.log(`depositVerifierAddr=${depositAddr}`);
   // eslint-disable-next-line no-console
   console.log(`spendVerifierAddr=${spendAddr}`);
+  // eslint-disable-next-line no-console
+  console.log(`withdrawVerifierAddr=${withdrawAddr}`);
 }
 
 main().catch((e) => {

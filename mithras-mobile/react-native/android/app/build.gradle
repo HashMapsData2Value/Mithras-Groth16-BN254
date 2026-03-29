@@ -10,7 +10,14 @@ def mithrasCustomAssetsDir = new File(project.projectDir, "src/main/assets/custo
 tasks.register("syncMithrasProvingKeys", Copy) {
     // These are required for proof generation flows.
     from(mithrasKeysDir)
-    include("spend_test.zkey", "deposit_test.zkey")
+    include(
+        "spend_test.zkey",
+        "deposit_test.zkey",
+        "withdraw_test.zkey",
+        "spend.wasm",
+        "deposit.wasm",
+        "withdraw.wasm"
+    )
     into(mithrasCustomAssetsDir)
 }
 
